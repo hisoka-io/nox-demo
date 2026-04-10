@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0a0a;
+  --color-bg-secondary: #111111;
+  --color-bg-card: #161616;
+  --color-bg-hover: #1c1c1c;
+  --color-bg-input: #0e0e0e;
+
+  --color-fg: #E8E5E0;
+  --color-fg-secondary: rgba(232, 229, 224, 0.78);
+  --color-fg-muted: rgba(232, 229, 224, 0.65);
+  --color-fg-faint: rgba(232, 229, 224, 0.14);
+
+  --color-olive: #B89A7E;
+
+  --color-accent: #B89A7E;
+  --color-accent-light: #C4A88E;
+  --color-accent-dim: rgba(184, 154, 126, 0.12);
+
+  --color-success: #3D8B40;
+  --color-warning: #D4722A;
+  --color-error: #C44040;
+
+  --color-node-entry: #B89A7E;
+  --color-node-mix: #7B8B9A;
+  --color-node-exit: #6B9B7B;
+  --color-packet-forward: #B89A7E;
+  --color-packet-return: #8BA87E;
+
+  --font-serif: "Instrument Serif", serif;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* ── Light mode overrides ── */
+html.light {
+  --color-bg: #F0EDE8;
+  --color-bg-secondary: #E8E4DE;
+  --color-bg-card: #FFFFFF;
+  --color-bg-hover: #E2DED8;
+  --color-bg-input: #FAF8F6;
+
+  --color-fg: #1A1A1A;
+  --color-fg-secondary: rgba(26, 26, 26, 0.72);
+  --color-fg-muted: rgba(26, 26, 26, 0.52);
+  --color-fg-faint: rgba(26, 26, 26, 0.14);
+
+  --color-olive: #7a8c3a;
+
+  --color-accent: #8B6B52;
+  --color-accent-light: #A8876E;
+  --color-accent-dim: rgba(139, 107, 82, 0.1);
+
+  --color-success: #2E7D32;
+  --color-warning: #C4651F;
+  --color-error: #B33030;
+
+  --color-node-entry: #8B6B52;
+  --color-node-mix: #5A7080;
+  --color-node-exit: #4A7A5A;
+  --color-packet-forward: #8B6B52;
+  --color-packet-return: #5A8A5A;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  transition: background 0.3s, color 0.3s;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+input, textarea {
+  font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-fg-faint);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fg-muted);
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+.animate-dot-pulse {
+  animation: dotPulse 1s ease-in-out infinite;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.2s ease-out;
+}
