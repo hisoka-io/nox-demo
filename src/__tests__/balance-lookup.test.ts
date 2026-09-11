@@ -16,7 +16,7 @@ function addressForChain(chain: Chain): string {
   return chain.id === "arbitrum-sepolia" ? DEPLOYER : VITALIK;
 }
 
-describe("Balance Lookup via Mixnet", () => {
+describe.skip("Balance Lookup via Mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {

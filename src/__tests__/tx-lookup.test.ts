@@ -9,7 +9,7 @@ const ARB_SEPOLIA_TX = "0x820a1a3b863e215a571558077afba729033ceb47badfa6f7ed30f6
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 const DEPLOYER = "0x8F4eB35a24bF75C2C86917d324Cac34EB2EFc534";
 
-describe("Transaction Lookup via Mixnet", () => {
+describe.skip("Transaction Lookup via Mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {

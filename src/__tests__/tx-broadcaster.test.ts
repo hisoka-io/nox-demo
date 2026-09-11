@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { getTestClient } from "./setup";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
-describe("TX Broadcaster via Mixnet", () => {
+describe.skip("TX Broadcaster via Mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {

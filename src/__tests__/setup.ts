@@ -1,4 +1,4 @@
-import { NoxClient, initNodeCrypto } from "@hisoka-io/nox-client";
+import { NoxClient } from "@hisoka-io/nox-client";
 
 const SEED_URL = "https://api.hisoka.io/seed/topology";
 
@@ -10,7 +10,6 @@ export async function getTestClient(): Promise<NoxClient> {
   if (connecting) return connecting;
 
   connecting = (async () => {
-    await initNodeCrypto();
     const c = await NoxClient.connect({
       seeds: [SEED_URL],
       timeoutMs: 60_000,
