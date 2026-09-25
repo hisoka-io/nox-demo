@@ -7,15 +7,16 @@ import { Examples } from "@/components/shared/Examples";
 import { RoutingAnimation } from "@/components/shared/RoutingAnimation";
 import { useRpcCall } from "@/hooks/useRpcCall";
 import { KNOWN_ABIS, ERC20_ABI } from "@/lib/abi";
+import { DARKPOOL, NOX_REGISTRY, SOKA_TOKEN } from "@/lib/network";
 import { DEFAULT_CHAIN } from "@/lib/blockscout";
 import { FileCode2, Play } from "lucide-react";
 import { encodeFunctionData, decodeFunctionResult } from "viem";
 import type { Abi, AbiFunction } from "viem";
 
 const EXAMPLE_CONTRACTS = [
-  { label: "NoxRegistry", value: "0x8626aF80db409BeD3C19871FAdf9b0Ce7Aa641Bc" },
-  { label: "DarkPool", value: "0x7A3B2A44559A4b66cCA2E207cd8aDE5b23BE6b7B" },
-  { label: "NOX-STK", value: "0x208be235AAB9b8b5d86285b2684c8e6743e662b5" },
+  { label: "NoxRegistry", value: NOX_REGISTRY },
+  { label: "DarkPool", value: DARKPOOL },
+  { label: "SOKA", value: SOKA_TOKEN },
 ];
 
 export function ContractReader() {

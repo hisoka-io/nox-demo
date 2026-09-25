@@ -1,3 +1,5 @@
+import { SOKA_TOKEN } from "@/lib/network";
+
 export interface TokenInfo {
   address: string;
   symbol: string;
@@ -6,8 +8,8 @@ export interface TokenInfo {
 
 export const ARB_SEPOLIA_TOKENS: TokenInfo[] = [
   {
-    address: "0x208be235AAB9b8b5d86285b2684c8e6743e662b5",
-    symbol: "NOX-STK",
+    address: SOKA_TOKEN,
+    symbol: "SOKA",
     decimals: 18,
   },
 ];
