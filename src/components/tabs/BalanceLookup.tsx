@@ -12,11 +12,12 @@ import {
 } from "@/lib/blockscout";
 import type { Chain, AddressInfo, TokenBalance, Transaction } from "@/lib/blockscout";
 import { Lock, Wallet, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { DEPLOYER, NOX_REGISTRY } from "@/lib/network";
 
 const EXAMPLE_ADDRESSES = [
-  { label: "Deployer", value: "0x8F4eB35a24bF75C2C86917d324Cac34EB2EFc534" },
+  { label: "Deployer", value: DEPLOYER },
   { label: "vitalik.eth", value: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-  { label: "NoxRegistry", value: "0x8626aF80db409BeD3C19871FAdf9b0Ce7Aa641Bc" },
+  { label: "NoxRegistry", value: NOX_REGISTRY },
 ];
 
 type View = "tokens" | "activity";

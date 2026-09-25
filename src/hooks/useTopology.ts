@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { NOX_SEED_URL } from "@/lib/network";
 
 export interface TopologyNode {
   id: string;
@@ -14,7 +15,7 @@ interface Topology {
   fingerprint: string;
 }
 
-const SEED_URL = "https://api.hisoka.io/seed/topology";
+const SEED_URL = `${NOX_SEED_URL.replace(/\/topology$/, "")}/topology`;
 const REFRESH_INTERVAL = 60_000;
 
 function layersForRole(role: number): number[] {

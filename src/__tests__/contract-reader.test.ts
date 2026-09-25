@@ -5,9 +5,7 @@ import { NOX_REGISTRY_ABI, DARKPOOL_ABI, ERC20_ABI } from "@/lib/abi";
 import type { Abi } from "viem";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
-const NOX_REGISTRY = "0x8626aF80db409BeD3C19871FAdf9b0Ce7Aa641Bc";
-const DARKPOOL = "0x7A3B2A44559A4b66cCA2E207cd8aDE5b23BE6b7B";
-const NOX_STK = "0x208be235AAB9b8b5d86285b2684c8e6743e662b5";
+import { DARKPOOL, NOX_REGISTRY, SOKA_TOKEN as NOX_STK } from "@/lib/network";
 
 describe.skip("Contract Reader via Mixnet", () => {
   let client: NoxClient;
