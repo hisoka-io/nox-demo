@@ -23,7 +23,7 @@ export function Header({ activeTab, onTabChange, connectionStatus, theme, onTogg
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
-  const { nodeCount } = useTopology();
+  const { nodeCount, registeredCount } = useTopology();
   const { totalSent, totalReceived } = usePacketTracker();
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export function Header({ activeTab, onTabChange, connectionStatus, theme, onTogg
           className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono text-fg-muted border border-fg-faint hover:border-fg-muted/50 transition-colors"
         >
           <Globe size={13} />
-          <span>{nodeCount} nodes</span>
+          <span title={`${nodeCount} online of ${registeredCount} registered`}>{nodeCount} online</span>
           <span className="flex gap-1 items-center">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-olive)] animate-dot-pulse" style={{ animationDelay: "0s" }} />
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-olive)] animate-dot-pulse" style={{ animationDelay: "0.2s" }} />
@@ -117,7 +117,8 @@ export function Header({ activeTab, onTabChange, connectionStatus, theme, onTogg
           </div>
           <div className="px-4 py-3 flex flex-col gap-2">
             <StatRow label="Network" value={chain.name} />
-            <StatRow label="Active Nodes" value={String(nodeCount)} />
+            <StatRow label="Online Nodes" value={String(nodeCount)} />
+            <StatRow label="Registered Nodes" value={String(registeredCount)} />
             <StatRow label="Encrypted Hops" value="3" />
             <StatRow label="Packets Sent" value={String(totalSent)} />
             <StatRow label="Responses" value={String(totalReceived)} />
