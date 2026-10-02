@@ -1,61 +1,43 @@
-import { useState, useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { getClient } from "@/lib/nox";
 import { decodeHttpResponseJson } from "@/lib/http-response";
 import { usePacketTracker } from "./usePacketTracker";
 
-interface HttpCallState<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-  latency: number | null;
-}
+export const DEFAULT_HTTP_BUDGET = 50_000;
 
+/**
+ * HTTP GET through the mixnet, decoded as JSON. `execute` rejects on transport
+ * errors, non-2xx statuses and truncated replies, so callers can show the failure.
+ */
 export function useHttpCall<T = unknown>() {
-  const [state, setState] = useState<HttpCallState<T>>({
-    data: null,
-    loading: false,
-    error: null,
-    latency: null,
-  });
-
   const { trackOutbound, trackResponse, trackError } = usePacketTracker();
 
   const execute = useCallback(
-    async (url: string, expectedBytes = 50_000): Promise<T | null> => {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
+    async (url: string, expectedBytes = DEFAULT_HTTP_BUDGET, timeoutMs?: number): Promise<T> => {
       const start = Date.now();
-      const label = new URL(url).pathname.split("/").slice(-2).join("/");
-      trackOutbound(`http:${label}`);
+      const label = `http:${new URL(url).pathname.split("/").slice(-2).join("/")}`;
+      trackOutbound(label);
 
+      let raw: Uint8Array;
       try {
         const client = await getClient();
-        const raw = await client.httpRequest(
+        raw = await client.httpRequest(
           "GET",
           url,
           [["Accept", "application/json"]],
           new Uint8Array(0),
-          { expectedResponseBytes: expectedBytes },
+          { expectedResponseBytes: expectedBytes, timeoutMs },
         );
-
-        const elapsed = Date.now() - start;
-        trackResponse(`http:${label}`, elapsed);
-
-        const parsed = decodeHttpResponseJson<T>(raw);
-        setState({ data: parsed, loading: false, error: null, latency: elapsed });
-        return parsed;
+        trackResponse(label, Date.now() - start);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        trackError(`http:${label}`);
-        setState((prev) => ({ ...prev, loading: false, error: msg }));
-        return null;
+        trackError(label);
+        throw err instanceof Error ? err : new Error(String(err));
       }
+      // The reply arrived; a bad status or truncated body is an application error.
+      return decodeHttpResponseJson<T>(raw);
     },
     [trackOutbound, trackResponse, trackError],
   );
 
-  const reset = useCallback(() => {
-    setState({ data: null, loading: false, error: null, latency: null });
-  }, []);
-
-  return { ...state, execute, reset };
+  return useMemo(() => ({ execute }), [execute]);
 }

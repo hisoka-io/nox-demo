@@ -16,6 +16,27 @@ export const CHAINS: Chain[] = [
 
 export const DEFAULT_CHAIN = CHAINS[0];
 
+/** The exit node's default RPC is Arb Sepolia, so RPC mode is only accurate there. */
+export function supportsRpcMode(chain: Chain): boolean {
+  return chain.id === DEFAULT_CHAIN.id;
+}
+
+// Reply budgets (bytes) for requests routed through the mixnet. Each budget sets
+// how many SURBs ride along with the request; oversized budgets make the request
+// much slower, undersized ones get the reply truncated.
+export const RESPONSE_BUDGET = {
+  addressInfo: 10_000,
+  // A full 50-token page is ~27 KB of JSON.
+  tokens: 50_000,
+  transactions: 60_000,
+  transaction: 30_000,
+  abi: 40_000,
+} as const;
+
+// Blockscout can take 15 s+ on a cold token or activity query for a busy address,
+// so these get more than the client's default 30 s round-trip timeout.
+export const SLOW_QUERY_TIMEOUT_MS = 60_000;
+
 export interface AddressInfo {
   address: string;
   coinBalance: string;
@@ -33,7 +54,6 @@ export interface TokenBalance {
   exchangeRate: string | null;
   marketCap: number;
   type: string;
-  iconUrl: string | null;
 }
 
 export interface Transaction {
@@ -84,7 +104,6 @@ export function parseTokenBalances(data: unknown): TokenBalance[] {
       exchangeRate: token.exchange_rate ? String(token.exchange_rate) : null,
       marketCap: parseFloat(String(token.circulating_market_cap || "0")) || 0,
       type: String(token.type || "ERC-20"),
-      iconUrl: token.icon_url ? String(token.icon_url) : null,
     };
   });
 }
@@ -131,4 +150,21 @@ export function parseTokenTransfers(data: Record<string, unknown>): TokenTransfe
 
 export function buildUrl(chain: Chain, path: string): string {
   return `${chain.blockscoutUrl}/api/v2${path}`;
+}
+
+/** ABI-only endpoint (Etherscan-compatible); much smaller than /api/v2/smart-contracts. */
+export function buildAbiUrl(chain: Chain, address: string): string {
+  return `${chain.blockscoutUrl}/api?module=contract&action=getabi&address=${address}`;
+}
+
+/** Parses a getabi reply. Returns null when the contract is not verified. */
+export function parseAbiResponse(data: unknown): unknown[] | null {
+  const obj = (data || {}) as Record<string, unknown>;
+  if (String(obj.status) !== "1" || typeof obj.result !== "string") return null;
+  try {
+    const abi: unknown = JSON.parse(obj.result);
+    return Array.isArray(abi) && abi.length > 0 ? abi : null;
+  } catch {
+    return null;
+  }
 }

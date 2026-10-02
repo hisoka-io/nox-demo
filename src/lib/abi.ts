@@ -22,8 +22,13 @@ export const DARKPOOL_ABI = [
   { name: "getNextLeafIndex", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
 ] as const;
 
-export const KNOWN_ABIS: Record<string, readonly unknown[]> = {
-  [NOX_REGISTRY]: NOX_REGISTRY_ABI,
-  [DARKPOOL]: DARKPOOL_ABI,
-  [SOKA_TOKEN]: ERC20_ABI,
+const KNOWN_ABIS: Record<string, readonly unknown[]> = {
+  [NOX_REGISTRY.toLowerCase()]: NOX_REGISTRY_ABI,
+  [DARKPOOL.toLowerCase()]: DARKPOOL_ABI,
+  [SOKA_TOKEN.toLowerCase()]: ERC20_ABI,
 };
+
+/** Built-in ABI for a known contract, matched case-insensitively. */
+export function knownAbi(address: string): readonly unknown[] | undefined {
+  return KNOWN_ABIS[address.toLowerCase()];
+}

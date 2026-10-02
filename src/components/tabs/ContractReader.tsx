@@ -6,9 +6,10 @@ import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { Examples } from "@/components/shared/Examples";
 import { RoutingAnimation } from "@/components/shared/RoutingAnimation";
 import { useRpcCall } from "@/hooks/useRpcCall";
-import { KNOWN_ABIS, ERC20_ABI } from "@/lib/abi";
+import { useHttpCall } from "@/hooks/useHttpCall";
+import { knownAbi, ERC20_ABI } from "@/lib/abi";
 import { DARKPOOL, NOX_REGISTRY, SOKA_TOKEN } from "@/lib/network";
-import { DEFAULT_CHAIN } from "@/lib/blockscout";
+import { DEFAULT_CHAIN, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse } from "@/lib/blockscout";
 import { FileCode2, Play } from "lucide-react";
 import { encodeFunctionData, decodeFunctionResult } from "viem";
 import type { Abi, AbiFunction } from "viem";
@@ -30,8 +31,10 @@ export function ContractReader() {
   const [error, setError] = useState<string | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
   const [abiSource, setAbiSource] = useState<"known" | "blockscout" | "erc20-fallback" | null>(null);
+  const [abiNote, setAbiNote] = useState<string | null>(null);
 
   const rpc = useRpcCall<string>();
+  const http = useHttpCall<unknown>();
 
   const viewFunctions = useMemo(() => {
     if (!abi) return [];
@@ -52,34 +55,38 @@ export function ContractReader() {
     setError(null);
     setAbi(null);
     setAbiSource(null);
+    setAbiNote(null);
 
-    const known = KNOWN_ABIS[addr];
+    const known = knownAbi(addr);
     if (known) {
       setAbi(known as Abi);
       setAbiSource("known");
       return;
     }
 
+    // The ABI lookup names the contract, so it goes through the mixnet too.
     setAbiLoading(true);
     try {
-      const resp = await fetch(
-        `${DEFAULT_CHAIN.blockscoutUrl}/api/v2/smart-contracts/${addr}`,
-      );
-      const data = await resp.json();
-      if (data.abi && Array.isArray(data.abi) && data.abi.length > 0) {
-        setAbi(data.abi as Abi);
+      const data = await http.execute(buildAbiUrl(DEFAULT_CHAIN, addr), RESPONSE_BUDGET.abi);
+      const fetched = parseAbiResponse(data);
+      if (fetched) {
+        setAbi(fetched as Abi);
         setAbiSource("blockscout");
       } else {
         setAbi(ERC20_ABI as unknown as Abi);
         setAbiSource("erc20-fallback");
+        setAbiNote("Contract not verified on Blockscout -- using ERC-20 ABI fallback");
       }
-    } catch {
+    } catch (err) {
       setAbi(ERC20_ABI as unknown as Abi);
       setAbiSource("erc20-fallback");
+      setAbiNote(
+        `ABI lookup failed (${err instanceof Error ? err.message : String(err)}) -- using ERC-20 ABI fallback`,
+      );
     } finally {
       setAbiLoading(false);
     }
-  }, []);
+  }, [http]);
 
   const executeCall = useCallback(async () => {
     if (!contractAddress || !currentFn || !abi) return;
@@ -101,7 +108,7 @@ export function ContractReader() {
       const calldata = encodeFunctionData({ abi, functionName: currentFn.name, args });
 
       const raw = await rpc.execute("eth_call", [{ to: contractAddress, data: calldata }, "latest"]);
-      if (!raw) throw new Error("Call returned empty");
+      if (!raw || raw === "0x") throw new Error("Call returned no data (is this a contract with that function?)");
 
       const elapsed = Date.now() - start;
       setLatency(elapsed);
@@ -125,7 +132,7 @@ export function ContractReader() {
         <div>
           <h2 className="font-serif text-2xl mb-1">Contract Reader</h2>
           <p className="text-[0.8rem] text-fg-muted">
-            Read any smart contract function. Your queries are unlinkable to your IP.
+            Read any contract function. The call and the ABI lookup both go through the mixnet, so the RPC provider and Blockscout never see your IP.
           </p>
         </div>
         <span className="text-[0.65rem] text-fg-muted uppercase tracking-wider border border-fg-faint px-2 py-1 shrink-0">
@@ -144,7 +151,7 @@ export function ContractReader() {
       {contractAddress && abiLoading && (
         <div className="flex items-center gap-2 py-4">
           <span className="inline-block w-4 h-4 border-2 border-fg-muted border-t-transparent rounded-full animate-spin" />
-          <span className="text-[0.8rem] text-fg-muted">Fetching contract ABI from Blockscout...</span>
+          <span className="text-[0.8rem] text-fg-muted">Fetching contract ABI from Blockscout via the mixnet...</span>
         </div>
       )}
 
@@ -159,8 +166,8 @@ export function ContractReader() {
           {abiSource === "blockscout" && (
             <p className="text-[0.65rem] text-fg-muted">ABI loaded from Blockscout (verified contract)</p>
           )}
-          {abiSource === "erc20-fallback" && (
-            <p className="text-[0.65rem] text-fg-muted">Contract not verified on Blockscout -- using ERC-20 ABI fallback</p>
+          {abiSource === "erc20-fallback" && abiNote && (
+            <p className="text-[0.65rem] text-fg-muted break-words">{abiNote}</p>
           )}
           <div>
             <label className="text-xs text-fg-muted uppercase tracking-wider block mb-2">
