@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { AddressInput } from "@/components/shared/AddressInput";
 import { ResultCard } from "@/components/shared/ResultCard";
 import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
@@ -9,13 +9,14 @@ import { useHttpCall } from "@/hooks/useHttpCall";
 import { formatTokenBalance, truncateAddress, formatUsd, formatNumber } from "@/lib/format";
 import {
   buildUrl, parseAddressInfo, parseTokenBalances, parseTransactions,
+  supportsRpcMode, RESPONSE_BUDGET, SLOW_QUERY_TIMEOUT_MS,
 } from "@/lib/blockscout";
 import type { Chain, AddressInfo, TokenBalance, Transaction } from "@/lib/blockscout";
-import { Lock, Wallet, ArrowUpRight, ArrowDownLeft } from "lucide-react";
-import { DEPLOYER, NOX_REGISTRY } from "@/lib/network";
+import { Lock, Wallet, ArrowUpRight, ArrowDownLeft, AlertTriangle } from "lucide-react";
+import { GOV_SAFE, NOX_REGISTRY } from "@/lib/network";
 
 const EXAMPLE_ADDRESSES = [
-  { label: "Deployer", value: DEPLOYER },
+  { label: "Gov Safe", value: GOV_SAFE },
   { label: "vitalik.eth", value: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   { label: "NoxRegistry", value: NOX_REGISTRY },
 ];
@@ -25,8 +26,12 @@ type View = "tokens" | "activity";
 interface PortfolioData {
   info: AddressInfo;
   tokens: TokenBalance[];
+  /** Set when the token list could not be fetched; the native balance is still shown. */
+  tokensError: string | null;
   transactions: Transaction[] | null;
+  transactionsError: string | null;
   chain: Chain;
+  mode: "rpc" | "api";
   latencyMs: number;
   txNextPage: Record<string, string> | null;
 }
@@ -37,16 +42,20 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"rpc" | "api">("rpc");
+  const [preferredMode, setMode] = useState<"rpc" | "api">("rpc");
+  const rpcAvailable = supportsRpcMode(chain);
+  // RPC mode reads the exit's default chain (Arb Sepolia); other chains always use Explorer.
+  const mode = rpcAvailable ? preferredMode : "api";
 
   const [loadingMore, setLoadingMore] = useState(false);
+  const lastAddress = useRef<string | null>(null);
   const rpc = useRpcCall<string>();
   const http = useHttpCall<unknown>();
 
-  const lookupViaRpc = useCallback(async (address: string) => {
+  const lookupViaRpc = useCallback(async (address: string): Promise<PortfolioData> => {
     const start = Date.now();
     const ethHex = await rpc.execute("eth_getBalance", [address, "latest"]);
-    if (!ethHex) throw new Error("Failed to fetch ETH balance");
+    if (!ethHex) throw new Error("RPC returned no balance");
 
     const ethBal = BigInt(ethHex);
     return {
@@ -58,29 +67,41 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
         hasTokens: false,
       } satisfies AddressInfo,
       tokens: [] as TokenBalance[],
+      tokensError: null,
       transactions: null,
+      transactionsError: null,
       chain,
+      mode: "rpc",
       latencyMs: Date.now() - start,
       txNextPage: null,
     };
   }, [rpc, chain]);
 
-  const lookupViaApi = useCallback(async (address: string) => {
+  const lookupViaApi = useCallback(async (address: string): Promise<PortfolioData> => {
     const start = Date.now();
 
-    const [infoData, tokData] = await Promise.all([
-      http.execute(buildUrl(chain, `/addresses/${address}`), 10_000),
-      http.execute(buildUrl(chain, `/addresses/${address}/tokens?type=ERC-20`), 200_000),
+    const [infoRes, tokRes] = await Promise.allSettled([
+      http.execute(buildUrl(chain, `/addresses/${address}`), RESPONSE_BUDGET.addressInfo),
+      http.execute(buildUrl(chain, `/addresses/${address}/tokens?type=ERC-20`), RESPONSE_BUDGET.tokens, SLOW_QUERY_TIMEOUT_MS),
     ]);
 
-    if (!infoData) throw new Error("Failed to fetch address info");
-    const info = parseAddressInfo(infoData as Record<string, unknown>);
-    const tokens = tokData ? parseTokenBalances(tokData as Record<string, unknown>[] | Record<string, unknown>) : [];
+    if (infoRes.status === "rejected") {
+      throw new Error(`Address lookup failed: ${errorMessage(infoRes.reason)}`);
+    }
+    const info = parseAddressInfo(infoRes.value as Record<string, unknown>);
+    const tokens = tokRes.status === "fulfilled"
+      ? parseTokenBalances(tokRes.value as Record<string, unknown>[] | Record<string, unknown>)
+      : [];
+    const tokensError = tokRes.status === "rejected" ? errorMessage(tokRes.reason) : null;
 
-    return { info, tokens, transactions: null, chain, latencyMs: Date.now() - start, txNextPage: null };
+    return {
+      info, tokens, tokensError, transactions: null, transactionsError: null,
+      chain, mode: "api", latencyMs: Date.now() - start, txNextPage: null,
+    };
   }, [http, chain]);
 
   const lookup = useCallback(async (address: string) => {
+    lastAddress.current = address;
     setLoading(true);
     setError(null);
     setPortfolio(null);
@@ -89,7 +110,7 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
       const result = mode === "api" ? await lookupViaApi(address) : await lookupViaRpc(address);
       setPortfolio(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -98,9 +119,14 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
   const loadTransactions = useCallback(async (pageParams?: Record<string, string>) => {
     if (!portfolio) return;
     setLoadingMore(true);
+    setPortfolio((prev) => (prev ? { ...prev, transactionsError: null } : prev));
     const qs = pageParams ? `?${new URLSearchParams(pageParams).toString()}` : "";
-    const data = await http.execute(buildUrl(portfolio.chain, `/addresses/${portfolio.info.address}/transactions${qs}`), 60_000);
-    if (data) {
+    try {
+      const data = await http.execute(
+        buildUrl(portfolio.chain, `/addresses/${portfolio.info.address}/transactions${qs}`),
+        RESPONSE_BUDGET.transactions,
+        SLOW_QUERY_TIMEOUT_MS,
+      );
       const obj = data as Record<string, unknown>;
       const newTxs = parseTransactions(obj);
       const nextPage = obj.next_page_params ? obj.next_page_params as Record<string, string> : null;
@@ -109,8 +135,11 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
         const existing = prev.transactions || [];
         return { ...prev, transactions: pageParams ? [...existing, ...newTxs] : newTxs, txNextPage: nextPage };
       });
+    } catch (err) {
+      setPortfolio((prev) => (prev ? { ...prev, transactionsError: errorMessage(err) } : prev));
+    } finally {
+      setLoadingMore(false);
     }
-    setLoadingMore(false);
   }, [portfolio, http]);
 
   const ethBalanceFormatted = portfolio
@@ -130,7 +159,9 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
         <div className="flex border border-fg-faint">
           <button
             onClick={() => setMode("rpc")}
-            className={`px-3 py-1.5 text-xs uppercase tracking-wider font-semibold transition-colors ${
+            disabled={!rpcAvailable}
+            title={rpcAvailable ? "Native balance via eth_getBalance" : "RPC mode reads Arb Sepolia only. Explorer mode is used for this chain."}
+            className={`px-3 py-1.5 text-xs uppercase tracking-wider font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
               mode === "rpc" ? "bg-fg text-bg" : "text-fg-muted hover:text-fg"
             }`}
           >
@@ -149,11 +180,11 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
 
       <div className="flex items-center gap-2 text-sm text-[var(--color-olive)]/70">
         <Lock size={13} />
-        <span>Every query routes through 3 encrypted hops - no one can link your IP to this lookup</span>
+        <span>Every lookup routes through 3 encrypted hops, so the data provider never sees your IP</span>
       </div>
 
       <AddressInput
-        placeholder="0x address or ENS name"
+        placeholder="0x address"
         onSubmit={lookup}
         loading={loading}
         validate="address"
@@ -162,7 +193,12 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
 
       <Examples items={EXAMPLE_ADDRESSES} onSelect={(v) => { setInputValue(v); lookup(v); }} />
 
-      {error && <ErrorDisplay message={error} onRetry={() => portfolio && lookup(portfolio.info.address)} />}
+      {error && (
+        <ErrorDisplay
+          message={error}
+          onRetry={() => lastAddress.current && lookup(lastAddress.current)}
+        />
+      )}
 
       {portfolio && (
         <>
@@ -188,7 +224,7 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
             </div>
           </ResultCard>
 
-          {mode === "api" && (
+          {portfolio.mode === "api" && (
             <div className="flex gap-1 border-b border-fg-faint">
               {(["tokens", "activity"] as View[]).map((v) => (
                 <button
@@ -207,8 +243,16 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
             </div>
           )}
 
-          {(mode === "rpc" || view === "tokens") && (
+          {(portfolio.mode === "rpc" || view === "tokens") && (
             <div className="flex flex-col">
+              {portfolio.tokensError && (
+                <div className="flex items-start gap-2 border border-warning/30 bg-warning/5 px-3 py-2 mb-2 text-xs text-fg-secondary">
+                  <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" />
+                  <span className="break-words">
+                    Token list unavailable: {portfolio.tokensError}. Showing the native balance only.
+                  </span>
+                </div>
+              )}
               <TokenRow token={{
                 symbol: portfolio.chain.symbol,
                 name: portfolio.chain.name,
@@ -218,7 +262,6 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
                 exchangeRate: portfolio.info.exchangeRate,
                 marketCap: Infinity,
                 type: "native",
-                iconUrl: null,
               }} />
               {sortTokensByValue(portfolio.tokens).map((token) => (
                 <TokenRow key={token.address} token={token} />
@@ -226,8 +269,14 @@ export function BalanceLookup({ chain }: { chain: Chain }) {
             </div>
           )}
 
-          {mode === "api" && view === "activity" && (
+          {portfolio.mode === "api" && view === "activity" && (
             <div className="flex flex-col gap-1">
+              {portfolio.transactionsError && (
+                <ErrorDisplay
+                  message={`Could not load activity: ${portfolio.transactionsError}`}
+                  onRetry={() => loadTransactions()}
+                />
+              )}
               {portfolio.transactions === null && loadingMore && (
                 <p className="text-fg-muted text-sm py-6 text-center">Loading transactions...</p>
               )}
@@ -282,8 +331,6 @@ function TokenRow({ token }: { token: TokenBalance }) {
             <path d="M16.498 20.573l7.497-4.353-7.497-3.348v7.701z" fill="#fff" fillOpacity=".2" />
             <path d="M9 16.22l7.498 4.353v-7.701L9 16.22z" fill="#fff" fillOpacity=".6" />
           </svg>
-        ) : token.iconUrl ? (
-          <img src={token.iconUrl} alt="" className="w-7 h-7 rounded-full shrink-0" />
         ) : (
           <div className="w-7 h-7 rounded-full bg-bg-hover border border-fg-faint flex items-center justify-center shrink-0">
             <span className="text-xs text-fg-muted font-semibold">{token.symbol.slice(0, 2)}</span>
@@ -365,4 +412,8 @@ function calcTotalUsd(p: PortfolioData): string | null {
     total += tokenUsdValue(t);
   }
   return total > 0 ? total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

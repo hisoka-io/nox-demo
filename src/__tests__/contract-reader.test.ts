@@ -1,17 +1,32 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { getTestClient } from "./setup";
+import { getTestClient, LIVE } from "./setup";
 import { encodeFunctionData, decodeFunctionResult } from "viem";
 import { NOX_REGISTRY_ABI, DARKPOOL_ABI, ERC20_ABI } from "@/lib/abi";
+import { DEFAULT_CHAIN, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse } from "@/lib/blockscout";
+import { decodeHttpResponseJson } from "@/lib/http-response";
 import type { Abi } from "viem";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
-import { DARKPOOL, NOX_REGISTRY, SOKA_TOKEN as NOX_STK } from "@/lib/network";
+import { DARKPOOL, GOV_SAFE, NOX_REGISTRY, SOKA_TOKEN as NOX_STK } from "@/lib/network";
 
-describe.skip("Contract Reader via Mixnet", () => {
+describe.skipIf(!LIVE)("Contract Reader via Mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {
     client = await getTestClient();
+  });
+
+  describe("ABI lookup through the mixnet", () => {
+    it("fetches a verified ABI from Blockscout within the ABI budget", async () => {
+      const raw = await client.httpRequest(
+        "GET", buildAbiUrl(DEFAULT_CHAIN, NOX_REGISTRY),
+        [["Accept", "application/json"]],
+        new Uint8Array(0),
+        { expectedResponseBytes: RESPONSE_BUDGET.abi },
+      );
+      const abi = parseAbiResponse(decodeHttpResponseJson<unknown>(raw));
+      expect(Array.isArray(abi)).toBe(true);
+    });
   });
 
   describe("NoxRegistry", () => {
@@ -107,7 +122,7 @@ describe.skip("Contract Reader via Mixnet", () => {
     });
   });
 
-  describe("ERC-20 (NOX-STK Token)", () => {
+  describe("ERC-20 (SOKA token)", () => {
     it("reads token name", async () => {
       const calldata = encodeFunctionData({
         abi: ERC20_ABI as unknown as Abi,
@@ -184,12 +199,11 @@ describe.skip("Contract Reader via Mixnet", () => {
       expect(decoded as bigint).toBeGreaterThanOrEqual(0n);
     });
 
-    it("reads balanceOf for deployer", async () => {
-      const deployerAddr = "0x8F4eB35a24bF75C2C86917d324Cac34EB2EFc534";
+    it("reads balanceOf for the Gov Safe", async () => {
       const calldata = encodeFunctionData({
         abi: ERC20_ABI as unknown as Abi,
         functionName: "balanceOf",
-        args: [deployerAddr],
+        args: [GOV_SAFE],
       });
 
       const raw = await client.rpcCall("eth_call", [{ to: NOX_STK, data: calldata }, "latest"]);

@@ -1,0 +1,72 @@
+name: Live smoke
+
+# Checks the deployed site and the live mixnet suites:
+#  - after every successful Railway production deployment
+#  - every 6 hours
+#  - on demand (optionally against another URL)
+on:
+  deployment_status:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Site to test
+        default: https://demo.nox.hisoka.io/
+        required: false
+
+concurrency:
+  group: live-smoke
+  cancel-in-progress: false
+
+jobs:
+  site:
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       contains(github.event.deployment.environment, 'production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps chromium-headless-shell
+
+      - name: Smoke test the deployed site
+        env:
+          SMOKE_URL: ${{ inputs.url || 'https://demo.nox.hisoka.io/' }}
+        run: pnpm smoke
+
+  mixnet:
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Live mixnet suites
+        run: pnpm test:live

@@ -1,22 +1,21 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { getTestClient } from "./setup";
+import { getTestClient, LIVE } from "./setup";
 import { decodeHttpResponseJson } from "@/lib/http-response";
 import {
-  CHAINS, buildUrl,
+  CHAINS, RESPONSE_BUDGET, buildUrl,
   parseAddressInfo, parseTokenBalances, parseTransactions, parseTokenTransfers,
 } from "@/lib/blockscout";
+import { GOV_SAFE } from "@/lib/network";
 import { formatTokenBalance } from "@/lib/format";
 import type { Chain } from "@/lib/blockscout";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
-const DEPLOYER = "0x8F4eB35a24bF75C2C86917d324Cac34EB2EFc534";
-
 function addressForChain(chain: Chain): string {
-  return chain.id === "arbitrum-sepolia" ? DEPLOYER : VITALIK;
+  return chain.id === "arbitrum-sepolia" ? GOV_SAFE : VITALIK;
 }
 
-describe.skip("Balance Lookup via Mixnet", () => {
+describe.skipIf(!LIVE)("Balance Lookup via Mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {
@@ -24,8 +23,8 @@ describe.skip("Balance Lookup via Mixnet", () => {
   });
 
   describe("RPC Mode (Arb Sepolia default)", () => {
-    it("eth_getBalance returns a hex balance for deployer", async () => {
-      const result = await client.rpcCall("eth_getBalance", [DEPLOYER, "latest"]);
+    it("eth_getBalance returns a hex balance for the Gov Safe", async () => {
+      const result = await client.rpcCall("eth_getBalance", [GOV_SAFE, "latest"]);
       expect(result).toBeDefined();
       expect(typeof result).toBe("string");
       expect((result as string).startsWith("0x")).toBe(true);
@@ -50,7 +49,7 @@ describe.skip("Balance Lookup via Mixnet", () => {
           "GET", url,
           [["Accept", "application/json"]],
           new Uint8Array(0),
-          { expectedResponseBytes: 10_000 },
+          { expectedResponseBytes: RESPONSE_BUDGET.addressInfo },
         );
 
         const data = decodeHttpResponseJson<Record<string, unknown>>(raw);
@@ -67,7 +66,7 @@ describe.skip("Balance Lookup via Mixnet", () => {
           "GET", url,
           [["Accept", "application/json"]],
           new Uint8Array(0),
-          { expectedResponseBytes: 200_000 },
+          { expectedResponseBytes: RESPONSE_BUDGET.tokens },
         );
 
         const data = decodeHttpResponseJson<unknown>(raw);
@@ -87,7 +86,7 @@ describe.skip("Balance Lookup via Mixnet", () => {
           "GET", url,
           [["Accept", "application/json"]],
           new Uint8Array(0),
-          { expectedResponseBytes: 50_000, timeoutMs: 60_000 },
+          { expectedResponseBytes: RESPONSE_BUDGET.transactions, timeoutMs: 60_000 },
         );
 
         const data = decodeHttpResponseJson<Record<string, unknown>>(raw);

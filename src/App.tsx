@@ -5,6 +5,7 @@ import { BalanceLookup } from "@/components/tabs/BalanceLookup";
 import { TxLookup } from "@/components/tabs/TxLookup";
 import { ContractReader } from "@/components/tabs/ContractReader";
 import { TxBroadcaster } from "@/components/tabs/TxBroadcaster";
+import { MixnetGraph } from "@/components/visualization/MixnetGraph";
 import { useNoxClient } from "@/hooks/useNoxClient";
 import { useTheme } from "@/hooks/useTheme";
 import { DEFAULT_CHAIN } from "@/lib/blockscout";
@@ -55,33 +56,42 @@ export default function App() {
         onChainChange={handleChainChange}
       />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          {status === "error" && connError && (
-            <div className="mb-6 border border-error/30 bg-error/5 p-4 text-sm text-fg-secondary">
-              <p>Failed to connect to the mixnet: {connError}</p>
-              <button
-                onClick={reconnect}
-                className="mt-2 text-accent text-sm hover:text-accent-light transition-colors"
-              >
-                Retry connection
-              </button>
-            </div>
-          )}
+      <div className="flex flex-1 overflow-hidden">
+        <main className="flex-1 min-w-0 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            {status === "error" && connError && (
+              <div className="mb-6 border border-error/30 bg-error/5 p-4 text-sm text-fg-secondary">
+                <p>Failed to connect to the mixnet: {connError}</p>
+                <button
+                  onClick={reconnect}
+                  className="mt-2 text-accent text-sm hover:text-accent-light transition-colors"
+                >
+                  Retry connection
+                </button>
+              </div>
+            )}
 
-          {status === "connecting" && (
-            <div className="mb-6 flex items-center gap-3 text-fg-muted text-sm">
-              <span className="inline-block w-4 h-4 border-2 border-fg-muted border-t-transparent rounded-full animate-spin" />
-              Connecting to NOX mixnet...
-            </div>
-          )}
+            {status === "connecting" && (
+              <div className="mb-6 flex items-center gap-3 text-fg-muted text-sm">
+                <span className="inline-block w-4 h-4 border-2 border-fg-muted border-t-transparent rounded-full animate-spin" />
+                Connecting to NOX mixnet...
+              </div>
+            )}
 
-          {activeTab === "balance" && <BalanceLookup chain={chain} />}
-          {activeTab === "tx" && <TxLookup chain={chain} />}
-          {activeTab === "contract" && <ContractReader />}
-          {activeTab === "broadcast" && <TxBroadcaster />}
-        </div>
-      </main>
+            {activeTab === "balance" && <BalanceLookup chain={chain} />}
+            {activeTab === "tx" && <TxLookup chain={chain} />}
+            {activeTab === "contract" && <ContractReader />}
+            {activeTab === "broadcast" && <TxBroadcaster />}
+          </div>
+        </main>
+
+        <aside
+          aria-label="Live mixnet"
+          className="hidden lg:block lg:w-[38%] xl:w-[34%] max-w-[560px] shrink-0 border-l border-fg-faint bg-bg-secondary"
+        >
+          <MixnetGraph />
+        </aside>
+      </div>
 
       <Footer />
     </div>

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { getTestClient } from "./setup";
+import { getTestClient, LIVE } from "./setup";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
-describe.skip("Mixnet Connection", () => {
+describe.skipIf(!LIVE)("Mixnet Connection", () => {
   let client: NoxClient;
 
   beforeAll(async () => {

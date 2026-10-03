@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { getTestClient } from "./setup";
+import { getTestClient, LIVE } from "./setup";
 import { decodeHttpResponseJson } from "@/lib/http-response";
-import { CHAINS, buildUrl, parseTransactions } from "@/lib/blockscout";
+import { CHAINS, RESPONSE_BUDGET, buildUrl, parseTransactions } from "@/lib/blockscout";
 import { formatEther, hexToDecimal } from "@/lib/format";
+import { GOV_SAFE, GOV_SAFE_CREATION_TX } from "@/lib/network";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
-const ARB_SEPOLIA_TX = "0x820a1a3b863e215a571558077afba729033ceb47badfa6f7ed30f65781f9f33a";
+const ARB_SEPOLIA_TX = GOV_SAFE_CREATION_TX;
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
-const DEPLOYER = "0x8F4eB35a24bF75C2C86917d324Cac34EB2EFc534";
 
-describe.skip("Transaction Lookup via Mixnet", () => {
+describe.skipIf(!LIVE)("Transaction Lookup via Mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {
@@ -63,7 +63,7 @@ describe.skip("Transaction Lookup via Mixnet", () => {
   });
 
   for (const chain of CHAINS) {
-    const addr = chain.id === "arbitrum-sepolia" ? DEPLOYER : VITALIK;
+    const addr = chain.id === "arbitrum-sepolia" ? GOV_SAFE : VITALIK;
 
     describe(`Explorer API - ${chain.name} (${chain.id})`, () => {
       it("fetches address transactions then looks up a single tx", async () => {
@@ -72,7 +72,7 @@ describe.skip("Transaction Lookup via Mixnet", () => {
           "GET", listUrl,
           [["Accept", "application/json"]],
           new Uint8Array(0),
-          { expectedResponseBytes: 200_000 },
+          { expectedResponseBytes: RESPONSE_BUDGET.transactions },
         );
 
         const listData = decodeHttpResponseJson<Record<string, unknown>>(listRaw);
@@ -87,7 +87,7 @@ describe.skip("Transaction Lookup via Mixnet", () => {
           "GET", txUrl,
           [["Accept", "application/json"]],
           new Uint8Array(0),
-          { expectedResponseBytes: 50_000 },
+          { expectedResponseBytes: RESPONSE_BUDGET.transaction },
         );
 
         const txData = decodeHttpResponseJson<Record<string, unknown>>(txRaw);

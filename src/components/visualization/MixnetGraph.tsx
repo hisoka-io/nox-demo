@@ -129,7 +129,7 @@ export function MixnetGraph() {
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || dims.w === 0 || dims.h === 0) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -317,8 +317,11 @@ export function MixnetGraph() {
         style={{ width: dims.w, height: dims.h }}
         className="absolute inset-0"
       />
+      <div className="absolute top-9 left-4 right-4 text-center text-[10px] text-fg-muted">
+        Live nodes and counters. Packet paths are illustrative; each request picks its own route.
+      </div>
       <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-fg-muted uppercase tracking-wider">
-        <span>{nodeCount} nodes</span>
+        <span>{nodeCount} online</span>
         <span>{totalSent} sent / {totalReceived} received</span>
         {avgLatencyMs > 0 && <span>avg {formatLatency(avgLatencyMs)}</span>}
       </div>

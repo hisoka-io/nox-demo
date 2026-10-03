@@ -4,12 +4,19 @@ import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { RoutingAnimation } from "@/components/shared/RoutingAnimation";
 import { getClient } from "@/lib/nox";
 import { usePacketTracker } from "@/hooks/usePacketTracker";
+import { parseBroadcastResponse, parseSignedTxHex } from "@/lib/broadcast";
 import { Radio, ExternalLink } from "lucide-react";
+
+interface BroadcastOutcome {
+  hash: string;
+  /** True when the exit used its default Arb Sepolia provider, so Arbiscan is the right explorer. */
+  defaultRoute: boolean;
+}
 
 export function TxBroadcaster() {
   const [rawTx, setRawTx] = useState("");
   const [rpcUrl, setRpcUrl] = useState("");
-  const [txHash, setTxHash] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<BroadcastOutcome | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
@@ -17,36 +24,35 @@ export function TxBroadcaster() {
   const { trackOutbound, trackResponse, trackError } = usePacketTracker();
 
   const broadcast = useCallback(async () => {
-    const trimmed = rawTx.trim();
-    if (!trimmed.startsWith("0x")) {
-      setError("Signed transaction must start with 0x");
+    const txBytes = parseSignedTxHex(rawTx);
+    if (!txBytes) {
+      setError("Signed transaction must be 0x-prefixed hex with an even number of digits");
+      setOutcome(null);
       return;
     }
+    const customRpc = rpcUrl.trim() || undefined;
 
     setLoading(true);
     setError(null);
-    setTxHash(null);
+    setOutcome(null);
 
     const start = Date.now();
     trackOutbound("eth_sendRawTransaction");
 
     try {
       const client = await getClient();
-      const txBytes = new Uint8Array(
-        (trimmed.slice(2).match(/.{2}/g) || []).map((b) => parseInt(b, 16)),
-      );
-
-      const result = await client.broadcastSignedTransaction(
-        txBytes,
-        rpcUrl.trim() || undefined,
-      );
+      const response = await client.broadcastSignedTransaction(txBytes, customRpc);
 
       const elapsed = Date.now() - start;
       trackResponse("eth_sendRawTransaction", elapsed);
       setLatency(elapsed);
 
-      const hashHex = "0x" + Array.from(result).map((b) => b.toString(16).padStart(2, "0")).join("");
-      setTxHash(hashHex);
+      const parsed = parseBroadcastResponse(response);
+      if (parsed.ok) {
+        setOutcome({ hash: parsed.hash, defaultRoute: !customRpc });
+      } else {
+        setError(`Broadcast failed: ${parsed.error}`);
+      }
     } catch (err) {
       trackError("eth_sendRawTransaction");
       setError(err instanceof Error ? err.message : String(err));
@@ -110,23 +116,31 @@ export function TxBroadcaster() {
 
       {error && <ErrorDisplay message={error} />}
 
-      {txHash && (
-        <ResultCard title="Broadcasted" latency={latency}>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm text-fg-secondary break-all">{txHash}</span>
-            <a
-              href={`https://sepolia.arbiscan.io/tx/${txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 text-accent hover:text-accent-light transition-colors"
-            >
-              <ExternalLink size={16} />
-            </a>
+      {outcome && (
+        <ResultCard title="Accepted by RPC" latency={latency}>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm text-fg-secondary break-all">{outcome.hash}</span>
+              {outcome.defaultRoute && (
+                <a
+                  href={`https://sepolia.arbiscan.io/tx/${outcome.hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open on Arbiscan (direct link, not routed through the mixnet)"
+                  className="shrink-0 text-accent hover:text-accent-light transition-colors"
+                >
+                  <ExternalLink size={16} />
+                </a>
+              )}
+            </div>
+            <p className="text-xs text-fg-muted">
+              The RPC accepted the transaction. Check the Transaction tab for its receipt.
+            </p>
           </div>
         </ResultCard>
       )}
 
-      {!txHash && !loading && !error && (
+      {!outcome && !loading && !error && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Radio size={36} className="text-fg-faint mb-4" />
           <p className="text-fg-muted text-base">

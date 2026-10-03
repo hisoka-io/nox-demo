@@ -8,20 +8,33 @@ export interface HttpResponse {
 export function decodeHttpResponse(data: Uint8Array): HttpResponse {
   let offset = 0;
 
+  function need(n: number) {
+    if (offset + n > data.length) {
+      throw new Error("Malformed HTTP response from exit node");
+    }
+  }
+
   function readU16(): number {
+    need(2);
     const v = data[offset] | (data[offset + 1] << 8);
     offset += 2;
     return v;
   }
 
   function readU64(): number {
-    const lo = data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
+    need(8);
+    const view = new DataView(data.buffer, data.byteOffset + offset, 8);
+    const lo = view.getUint32(0, true);
+    const hi = view.getUint32(4, true);
     offset += 8;
-    return lo;
+    const v = hi * 2 ** 32 + lo;
+    if (!Number.isSafeInteger(v)) throw new Error("Malformed HTTP response from exit node");
+    return v;
   }
 
   function readBytes(): Uint8Array {
     const len = readU64();
+    need(len);
     const slice = data.slice(offset, offset + len);
     offset += len;
     return slice;
@@ -32,6 +45,7 @@ export function decodeHttpResponse(data: Uint8Array): HttpResponse {
   }
 
   function readBool(): boolean {
+    need(1);
     const v = data[offset];
     offset += 1;
     return v !== 0;
@@ -59,6 +73,15 @@ export function decodeHttpResponseJson<T>(data: Uint8Array): T {
     const bodyText = new TextDecoder().decode(resp.body);
     throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 200)}`);
   }
+  if (resp.truncated) {
+    throw new Error(
+      `Response was truncated by the exit node (${resp.body.length} bytes received); it is too large to fetch privately`,
+    );
+  }
   const text = new TextDecoder().decode(resp.body);
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Invalid JSON in response (${resp.body.length} bytes)`);
+  }
 }

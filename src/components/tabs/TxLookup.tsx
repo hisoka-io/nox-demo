@@ -8,13 +8,15 @@ import { Examples } from "@/components/shared/Examples";
 import { RoutingAnimation } from "@/components/shared/RoutingAnimation";
 import { useRpcCall } from "@/hooks/useRpcCall";
 import { useHttpCall } from "@/hooks/useHttpCall";
-import { buildUrl } from "@/lib/blockscout";
+import { buildUrl, RESPONSE_BUDGET } from "@/lib/blockscout";
 import type { Chain } from "@/lib/blockscout";
 import { truncateAddress, formatEther } from "@/lib/format";
 import { ArrowRight, FileSearch } from "lucide-react";
+import { GOV_SAFE_CREATION_TX } from "@/lib/network";
 
+// Arb Sepolia example; other chains need a hash from that chain.
 const EXAMPLE_TX_HASHES = [
-  { label: "Recent TX", value: "0x820a1a3b863e215a571558077afba729033ceb47badfa6f7ed30f65781f9f33a" },
+  { label: "Gov Safe setup", value: GOV_SAFE_CREATION_TX },
 ];
 
 interface TxResult {
@@ -33,7 +35,7 @@ interface TxResult {
 
 export function TxLookup({ chain }: { chain: Chain }) {
   const [result, setResult] = useState<TxResult | null>(null);
-  const rpc = useRpcCall<Record<string, string>>();
+  const rpc = useRpcCall<Record<string, string> | null>();
   const http = useHttpCall<Record<string, unknown>>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,8 +71,8 @@ export function TxLookup({ chain }: { chain: Chain }) {
 
   const lookupViaApi = useCallback(async (hash: string): Promise<TxResult> => {
     const start = Date.now();
-    const data = await http.execute(buildUrl(chain, `/transactions/${hash}`), 30_000);
-    if (!data) throw new Error("Transaction not found");
+    const data = await http.execute(buildUrl(chain, `/transactions/${hash}`), RESPONSE_BUDGET.transaction);
+    if (!data || !data.hash) throw new Error("Transaction not found");
 
     const from = (data.from as Record<string, unknown>)?.hash as string || "";
     const to = (data.to as Record<string, unknown>)?.hash as string || null;
@@ -125,7 +127,9 @@ export function TxLookup({ chain }: { chain: Chain }) {
         externalValue={inputValue}
       />
 
-      <Examples items={EXAMPLE_TX_HASHES} onSelect={(v) => { setInputValue(v); lookup(v); }} />
+      {isArbSepolia && (
+        <Examples items={EXAMPLE_TX_HASHES} onSelect={(v) => { setInputValue(v); lookup(v); }} />
+      )}
 
       {error && <ErrorDisplay message={error} />}
 
