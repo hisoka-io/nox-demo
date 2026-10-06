@@ -3,7 +3,7 @@ import { AnonRpcWorker } from "@anon-rpc/browser-harness";
 import type { Hex } from "viem";
 import { bundleHash, fetchVerifiedBundle, formatBytes, type ResolverOutcome } from "./lib/bundle";
 import { localSpecifierAddress, memoryProvider, readSpecifier, hostOf } from "./lib/specifier";
-import { bootReducer, initialBootState, parseWorkerLog, type LogLevel } from "./lib/timeline";
+import { bootReducer, initialBootState, parseWorkerLog, requestTiming, type LogLevel, type RequestTiming } from "./lib/timeline";
 
 export type BootSource =
   | { kind: "specifier"; address: string; chainId: number; rpcUrl: string }
@@ -38,6 +38,9 @@ export type Phase = "idle" | "booting" | "ready" | "failed";
 /** Rows kept for the log drawer (the harness keeps its own bounded queue). */
 const LOG_ROWS = 500;
 
+/** `request.timing` entries kept for matching to calls. */
+const TIMINGS_KEPT = 64;
+
 class PageBootError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {
@@ -62,7 +65,18 @@ export function useAnonRpcWorker() {
   const blobRef = useRef<string | null>(null);
   const runRef = useRef(0);
   const logIdRef = useRef(0);
+  const timingsRef = useRef<RequestTiming[]>([]);
 
+  /**
+   * The last request timing the worker logged at or after `since` and no
+   * later than `until` (the page runs one call at a time, so that is the
+   * call's winning request). Null when the worker logged none (worker 0.2.0,
+   * or a logLevel above debug).
+   */
+  const timingBetween = useCallback((since: number, until: number): RequestTiming | null => {
+    const found = timingsRef.current.filter((timing) => timing.at >= since && timing.at <= until);
+    return found.length === 0 ? null : found[found.length - 1]!;
+  }, []);
   const pushLog = useCallback((source: LogLine["source"], level: LogLevel, text: string) => {
     const line: LogLine = { id: ++logIdRef.current, at: performance.now(), source, level, text };
     setLogs((prev) => (prev.length >= LOG_ROWS ? [...prev.slice(prev.length - LOG_ROWS + 1), line] : [...prev, line]));
@@ -95,6 +109,7 @@ export function useAnonRpcWorker() {
       setInfo(null);
       setWorker(null);
       setLogs([]);
+      timingsRef.current = [];
       const now = () => performance.now();
 
       try {
@@ -194,7 +209,12 @@ export function useAnonRpcWorker() {
             }
             if (workerRef.current !== w) return;
             const log = parseWorkerLog(entry);
-            dispatch({ type: "log", at: performance.now(), log });
+            const at = performance.now();
+            const timing = requestTiming(log, at);
+            if (timing !== null) {
+              timingsRef.current = [...timingsRef.current.slice(-(TIMINGS_KEPT - 1)), timing];
+            }
+            dispatch({ type: "log", at, log });
             pushLog("worker", log.level, log.text);
           }
         })();
@@ -222,5 +242,5 @@ export function useAnonRpcWorker() {
 
   const effectivePhase: Phase = phase === "ready" && boot.failure !== null ? "failed" : phase;
 
-  return { phase: effectivePhase, boot, info, logs, worker, start, stop, pushLog };
+  return { phase: effectivePhase, boot, info, logs, worker, start, stop, pushLog, timingBetween };
 }

@@ -4,14 +4,61 @@ import { CALLS, compareValues, runCall, type CallId, type CallInputs, type CallR
 import { isAddress, isHttpUrl, TARGET_PRESETS, targetPresetById, explorerAddressUrl } from "../lib/config";
 import { describeError, type ErrorView } from "../lib/errors";
 import { formatMs, inputClass } from "../lib/format";
+import type { RequestTiming } from "../lib/timeline";
 import { hostOf } from "../lib/specifier";
 import { Badge, ExtLink, Field, Mono, Panel } from "./ui";
 
 type PathState =
   | { state: "idle" }
   | { state: "running" }
-  | { state: "ok"; result: CallResult }
+  | { state: "ok"; result: CallResult; startedAt?: number; endedAt?: number }
   | { state: "error"; error: ErrorView };
+
+/** How long after a call settles its `request.timing` log line may still arrive. */
+const TIMING_LOG_SLACK_MS = 500;
+
+export type TimingLookup = (since: number, until: number) => RequestTiming | null;
+
+const PHASES: readonly { key: keyof RequestTiming; label: string }[] = [
+  { key: "uploadMs", label: "upload" },
+  { key: "waitMs", label: "wait" },
+  { key: "claimMs", label: "claim" },
+  { key: "downloadMs", label: "download" },
+  { key: "decodeMs", label: "decode" },
+];
+
+function formatKb(bytes: number): string {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+/** Per-phase durations of the call's mixnet request (one call runs at a time). */
+function PhaseTimings({ timing, testId }: { timing: RequestTiming | null; testId: string }) {
+  if (timing === null) {
+    return (
+      <span className="text-[11px] text-fg-muted" data-testid={testId} data-state="none">
+        per-phase timing: worker 0.3 or later with logLevel debug
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] text-fg-muted" data-testid={testId} data-state="shown">
+      {PHASES.map(({ key, label }) => {
+        const value = timing[key];
+        return typeof value === "number" ? (
+          <span key={label} data-phase={label}>
+            {label} <span className="text-fg-secondary">{formatMs(value)}</span>
+          </span>
+        ) : null;
+      })}
+      {timing.claimBytes !== null && (
+        <span>
+          {formatKb(timing.claimBytes)}
+          {timing.format ? ` ${timing.format}` : ""}
+        </span>
+      )}
+    </span>
+  );
+}
 
 interface Row {
   anon: PathState;
@@ -20,7 +67,19 @@ interface Row {
 
 const IDLE_ROW: Row = { anon: { state: "idle" }, direct: { state: "idle" } };
 
-function PathCell({ label, icon, path, testId }: { label: string; icon: ReactNode; path: PathState; testId: string }) {
+function PathCell({
+  label,
+  icon,
+  path,
+  testId,
+  timing,
+}: {
+  label: string;
+  icon: ReactNode;
+  path: PathState;
+  testId: string;
+  timing?: RequestTiming | null;
+}) {
   return (
     <div className="flex flex-col gap-1 min-w-0" data-testid={testId} data-state={path.state}>
       <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
@@ -36,6 +95,7 @@ function PathCell({ label, icon, path, testId }: { label: string; icon: ReactNod
         </span>
       )}
       {path.state === "ok" && <span className="text-sm text-fg break-words font-mono">{path.result.summary}</span>}
+      {path.state === "ok" && timing !== undefined && <PhaseTimings timing={timing} testId={`${testId}-phases`} />}
       {path.state === "error" && (
         <span className="text-xs text-error break-words">
           {path.error.code && (
@@ -51,7 +111,15 @@ function PathCell({ label, icon, path, testId }: { label: string; icon: ReactNod
   );
 }
 
-export function CallsPanel({ workerFetch, ready }: { workerFetch: FetchLike | null; ready: boolean }) {
+export function CallsPanel({
+  workerFetch,
+  ready,
+  timingBetween,
+}: {
+  workerFetch: FetchLike | null;
+  ready: boolean;
+  timingBetween?: TimingLookup;
+}) {
   const [presetId, setPresetId] = useState(TARGET_PRESETS[0].id);
   const preset = targetPresetById(presetId) ?? TARGET_PRESETS[0];
   const [rpcUrl, setRpcUrl] = useState(preset.rpcUrl);
@@ -108,8 +176,9 @@ export function CallsPanel({ workerFetch, ready }: { workerFetch: FetchLike | nu
         ...prev,
         [id]: { anon: { state: "running" }, direct: compare ? { state: "running" } : { state: "idle" } },
       }));
+      const startedAt = performance.now();
       const anon = runCall(workerFetch, url, id, callInputs).then(
-        (result) => setPath(id, "anon", { state: "ok", result }),
+        (result) => setPath(id, "anon", { state: "ok", result, startedAt, endedAt: performance.now() }),
         (error: unknown) => setPath(id, "anon", { state: "error", error: describeError(error) }),
       );
       const direct = compare
@@ -265,6 +334,11 @@ export function CallsPanel({ workerFetch, ready }: { workerFetch: FetchLike | nu
                     icon={<Shield size={12} className="text-[var(--color-olive)]" />}
                     path={row.anon}
                     testId={`call-${call.id}-anon`}
+                    timing={
+                      row.anon.state === "ok" && timingBetween && row.anon.startedAt !== undefined && row.anon.endedAt !== undefined
+                        ? timingBetween(row.anon.startedAt, row.anon.endedAt + TIMING_LOG_SLACK_MS)
+                        : undefined
+                    }
                   />
                   <PathCell
                     label="Direct"

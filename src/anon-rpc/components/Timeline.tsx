@@ -67,6 +67,35 @@ export function Timeline({ boot, running }: { boot: BootState; running: boolean 
           );
         })}
       </ol>
+      {boot.later.length > 0 && (
+        <div className="mt-3" data-testid="boot-later">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">After boot</p>
+          <ol className="flex flex-col">
+            {boot.later.map((event, index) => (
+              <li
+                key={`${event.at}-${index}`}
+                data-testid={`later-${event.kind}`}
+                data-status={event.status}
+                className="grid grid-cols-[20px_1fr_auto] gap-x-3 items-start py-1.5 border-b border-fg-faint/50 last:border-0"
+              >
+                <span className="flex h-5 items-center justify-center">
+                  <StatusIcon status={event.status} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm text-fg">
+                    {event.kind === "recheck" ? "Registry re-check" : "Connection"}
+                  </span>
+                  <span className="block text-xs text-fg-muted break-words">{event.detail}</span>
+                </span>
+                <span className="text-right font-mono text-[11px] text-fg-muted whitespace-nowrap">
+                  {event.ms !== null ? formatMs(Math.round(event.ms)) : ""}
+                  <span className="block text-fg-muted/70">+{formatMs(Math.round(event.at - boot.t0))}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       {boot.retries > 0 && (
         <p className="mt-3 text-xs text-fg-muted">
           {boot.retries} dial retr{boot.retries === 1 ? "y" : "ies"}: the worker moves on to the next entry by itself.

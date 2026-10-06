@@ -198,6 +198,18 @@ export function explorerAddressUrl(explorer: string, address: string): string {
   return `${explorer.replace(/\/+$/, "")}/address/${address}`;
 }
 
+/**
+ * The config with `logLevel: "debug"` added when it names no log level, so
+ * the worker logs `request.timing` (per-phase durations) for each call. A
+ * config that is not a plain object is returned unchanged.
+ */
+export function withPhaseTimings(config: unknown): unknown {
+  if (config === undefined) return { logLevel: "debug" };
+  if (typeof config !== "object" || config === null || Array.isArray(config)) return config;
+  if ("logLevel" in config) return config;
+  return { ...(config as Record<string, unknown>), logLevel: "debug" };
+}
+
 /** Worker config (SPEC §7.1) from the text box: blank means no config at all. */
 export function parseConfigText(text: string): unknown {
   if (!text.trim()) return undefined;

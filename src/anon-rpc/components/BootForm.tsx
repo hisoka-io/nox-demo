@@ -1,6 +1,15 @@
 import { useState, type ChangeEvent } from "react";
 import { Play, Square, FileCode } from "lucide-react";
-import { chainById, HARNESS_VERSION, isAddress, isHttpUrl, parseConfigText, SPECIFIER_CHAINS, type PageDefaults } from "../lib/config";
+import {
+  chainById,
+  HARNESS_VERSION,
+  isAddress,
+  isHttpUrl,
+  parseConfigText,
+  SPECIFIER_CHAINS,
+  withPhaseTimings,
+  type PageDefaults,
+} from "../lib/config";
 import { bundleHash, formatBytes } from "../lib/bundle";
 import { inputClass } from "../lib/format";
 import type { BootRequest, Phase } from "../useAnonRpcWorker";
@@ -32,6 +41,7 @@ export function BootForm({
   const [chainId, setChainId] = useState(defaults.chainId);
   const [rpcUrl, setRpcUrl] = useState(defaults.specifierRpc);
   const [configText, setConfigText] = useState("");
+  const [phaseTimings, setPhaseTimings] = useState(true);
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +75,7 @@ export function BootForm({
     let config: unknown;
     try {
       config = parseConfigText(configText);
+      if (phaseTimings) config = withPhaseTimings(config);
     } catch (e) {
       setError(`Worker config must be JSON: ${(e as Error).message}`);
       return;
@@ -211,6 +222,20 @@ export function BootForm({
                 disabled={running}
               />
             </Field>
+            <label className="mt-2 flex items-start gap-2 text-xs text-fg-secondary">
+              <input
+                type="checkbox"
+                data-testid="input-phase-timings"
+                checked={phaseTimings}
+                onChange={(e) => setPhaseTimings(e.target.checked)}
+                disabled={running}
+                className="mt-0.5 accent-[var(--color-accent)]"
+              />
+              <span>
+                Show per-phase call timings (upload, wait, claim, download, decode). Sets <Mono>{'"logLevel":"debug"'}</Mono>{" "}
+                unless the config names a log level; the worker logs durations only.
+              </span>
+            </label>
           </div>
         </details>
 

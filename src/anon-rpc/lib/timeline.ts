@@ -47,9 +47,27 @@ export interface WorkerLog {
   text: string;
 }
 
+/**
+ * Something that happened after its boot step had finished: a later registry
+ * check (every 600 s), a redial or an entry failover. Shown as its own row so
+ * a finished step's duration never grows with wall-clock time.
+ */
+export interface LaterEvent {
+  kind: "recheck" | "connection";
+  at: number;
+  status: "done" | "warn";
+  detail: string;
+  /** The event's own duration when the worker reports one (a check's `ms`). */
+  ms: number | null;
+}
+
+/** Later events kept (newest last). */
+export const LATER_EVENTS_KEPT = 20;
+
 export interface BootState {
   t0: number;
   steps: Record<StepId, Step>;
+  later: LaterEvent[];
   /** Certhash label of the entry the worker reports (first 12 characters + "…"). */
   entryLabel: string | null;
   entryDialMs: number | null;
@@ -68,7 +86,7 @@ export type BootAction =
 export function initialBootState(at = 0): BootState {
   const steps = {} as Record<StepId, Step>;
   for (const id of STEP_ORDER) steps[id] = { id, label: LABELS[id], status: "pending" };
-  return { t0: at, steps, entryLabel: null, entryDialMs: null, members: null, retries: 0, failure: null };
+  return { t0: at, steps, later: [], entryLabel: null, entryDialMs: null, members: null, retries: 0, failure: null };
 }
 
 function isLogLevel(value: unknown): value is LogLevel {
@@ -110,10 +128,20 @@ export function parseWorkerLog(entry: { level: unknown; args: readonly unknown[]
   return { level, event, fields, text: rest ? `${event} ${rest}` : event };
 }
 
+export function isTerminal(status: StepStatus): boolean {
+  return status === "done" || status === "failed" || status === "skipped" || status === "warn";
+}
+
+/**
+ * Set a step's status. A step that already finished keeps its status, timing
+ * and detail: later terminal events (a periodic re-check, a redial) are
+ * recorded with `later`, never by moving `endedAt`.
+ */
 function setStep(state: BootState, id: StepId, status: StepStatus, at: number, detail?: string): BootState {
   const prev = state.steps[id];
+  const terminal = isTerminal(status);
+  if (isTerminal(prev.status) && (terminal || status === "active")) return state;
   const startedAt = prev.startedAt ?? at;
-  const terminal = status === "done" || status === "failed" || status === "skipped" || status === "warn";
   const next: Step = {
     ...prev,
     status,
@@ -141,6 +169,15 @@ function activate(state: BootState, id: StepId, at: number, detail?: string): Bo
   const status = state.steps[id].status;
   if (status === "done" || status === "failed") return state;
   return setStep(state, id, "active", at, detail);
+}
+
+function addLater(state: BootState, event: LaterEvent): BootState {
+  const later = [...state.later, event];
+  return { ...state, later: later.length > LATER_EVENTS_KEPT ? later.slice(later.length - LATER_EVENTS_KEPT) : later };
+}
+
+function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function str(value: unknown): string {
@@ -173,15 +210,22 @@ function applyLog(state: BootState, at: number, log: WorkerLog): BootState {
       };
     }
     case "anchor.failed":
-    case "kps.dial.failed":
-      return {
-        ...setStep(state, "dial", state.steps.dial.status === "done" ? "done" : "active", at, `${str(f.anchor ?? f.entry)} ${str(f.code)}, trying the next entry`),
-        retries: state.retries + 1,
-      };
+    case "kps.dial.failed": {
+      const detail = `${str(f.anchor ?? f.entry)} ${str(f.code)}, trying the next entry`;
+      if (isTerminal(state.steps.dial.status)) {
+        return addLater(state, { kind: "connection", at, status: "warn", detail: `redial: ${detail}`, ms: null });
+      }
+      return { ...setStep(state, "dial", "active", at, detail), retries: state.retries + 1 };
+    }
     case "boot.retry":
       return {
-        ...setStep(state, "dial", state.steps.dial.status === "done" ? "done" : "active", at, `retry ${str(f.attempt)} (${str(f.code)}) in ${str(f.delayMs)} ms`),
+        ...setStep(state, "dial", "active", at, `retry ${str(f.attempt)} (${str(f.code)}) in ${str(f.delayMs)} ms`),
         retries: state.retries + 1,
+      };
+    case "entry.failover":
+      return {
+        ...addLater(state, { kind: "connection", at, status: "done", detail: `entry ${str(f.from)} closed, moved to standby ${str(f.to)}`, ms: null }),
+        entryLabel: str(f.to) || state.entryLabel,
       };
     case "topology.accepted":
       return activate(
@@ -199,13 +243,23 @@ function applyLog(state: BootState, at: number, log: WorkerLog): BootState {
       return { ...state, entryLabel: str(f.to) || state.entryLabel };
     case "ready":
       return activate(finishThrough(state, "ready", at), "discovery", at, "reading NoxRegistry via 2 exits × 2 providers");
-    case "discovery.verified":
-      return setStep(state, "discovery", "done", at, `block ${str(f.block)}, ${str(f.members)} members, agreed in ${str(f.ms)} ms`);
+    case "discovery.verified": {
+      const detail = `block ${str(f.block)}, ${str(f.members)} members, agreed in ${str(f.ms)} ms`;
+      if (isTerminal(state.steps.discovery.status)) {
+        return addLater(state, { kind: "recheck", at, status: "done", detail, ms: num(f.ms) });
+      }
+      return setStep(state, "discovery", "done", at, detail);
+    }
     case "discovery.disagreement":
     case "discovery.incomplete":
     case "discovery.failed":
-    case "discovery.rejected":
-      return setStep(state, "discovery", "warn", at, `${log.event.slice("discovery.".length)}: running on the pinned snapshot floor`);
+    case "discovery.rejected": {
+      const detail = `${log.event.slice("discovery.".length)}: running on the pinned snapshot floor`;
+      if (isTerminal(state.steps.discovery.status)) {
+        return addLater(state, { kind: "recheck", at, status: "warn", detail, ms: null });
+      }
+      return setStep(state, "discovery", "warn", at, detail);
+    }
     case "worker.failed":
       return { ...state, failure: { code: str(f.code) || null, message: str(f.reason) || "the worker stopped" } };
     default:
@@ -232,6 +286,36 @@ export function bootReducer(state: BootState, action: BootAction): BootState {
       return { ...next, failure: { code: action.code, message: action.message } };
     }
   }
+}
+
+/** Per-phase durations of one mixnet request, from the worker's `request.timing` log (worker 0.3 and later, logLevel debug). */
+export interface RequestTiming {
+  at: number;
+  totalMs: number | null;
+  uploadMs: number | null;
+  waitMs: number | null;
+  claimMs: number | null;
+  downloadMs: number | null;
+  decodeMs: number | null;
+  claimBytes: number | null;
+  format: string | null;
+}
+
+/** `request.timing` fields as a `RequestTiming`, or null for any other log line. */
+export function requestTiming(log: WorkerLog, at: number): RequestTiming | null {
+  if (log.event !== "request.timing") return null;
+  const f = log.fields;
+  return {
+    at,
+    totalMs: num(f.totalMs),
+    uploadMs: num(f.uploadMs),
+    waitMs: num(f.waitMs),
+    claimMs: num(f.claimMs),
+    downloadMs: num(f.downloadMs),
+    decodeMs: num(f.decodeMs),
+    claimBytes: num(f.claimBytes),
+    format: typeof f.format === "string" ? f.format : null,
+  };
 }
 
 export function stepDuration(step: Step): number | null {
