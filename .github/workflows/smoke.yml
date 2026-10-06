@@ -1,6 +1,6 @@
 name: Live smoke
 
-# Checks the deployed site and the live mixnet suites:
+# Checks the deployed site (the Explorer and /anon-rpc) and the live mixnet suites:
 #  - after every successful Railway production deployment
 #  - every 6 hours
 #  - on demand (optionally against another URL)
@@ -49,6 +49,47 @@ jobs:
         env:
           SMOKE_URL: ${{ inputs.url || 'https://demo.nox.hisoka.io/' }}
         run: pnpm smoke
+
+  anon-rpc:
+    # Boots the KPS-native Nox worker on /anon-rpc from a cold browser and runs
+    # the wallet calls through worker.fetch.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       contains(github.event.deployment.environment, 'production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps chromium-headless-shell
+
+      - name: Smoke test /anon-rpc on the deployed site
+        env:
+          SMOKE_URL: ${{ inputs.url || 'https://demo.nox.hisoka.io/' }}
+          ANON_RPC_REPORT: anon-rpc-report.json
+        run: pnpm smoke:anon-rpc
+
+      - name: Keep the timing report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anon-rpc-report
+          path: anon-rpc-report.json
+          if-no-files-found: ignore
 
   mixnet:
     if: github.event_name != 'deployment_status'
