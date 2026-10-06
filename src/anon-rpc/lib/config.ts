@@ -154,6 +154,16 @@ function parseChainId(raw: string | null | undefined): number | undefined {
 export const FALLBACK_SPECIFIER_CHAIN_ID = 11155111;
 
 /**
+ * The published Nox worker: @hisoka-io/anon-rpc-worker 0.2.0, pinned by an
+ * ImmutableWorkerSpecifier on Ethereum Sepolia (workerHash
+ * 0x0a58f9915f686950072a4786249d396ecbf2194a39ac835effe8ea1a7c76f324).
+ */
+export const RELEASED_SPECIFIER = {
+  address: "0x29b4a6A8Cc11769531854d87f9F33EC63Efe8fe6",
+  chainId: 11155111,
+} as const;
+
+/**
  * Resolve the page defaults: query string, then build-time env, then the
  * built-in fallbacks. Invalid values are ignored at each level rather than
  * carried into the form.
@@ -162,11 +172,15 @@ export function resolveDefaults(env: Env, search: string): PageDefaults {
   const query = new URLSearchParams(search);
 
   const specifierCandidates = [query.get("specifier"), env.VITE_ANON_RPC_SPECIFIER];
-  const specifier = specifierCandidates.map((v) => v?.trim() ?? "").find(isAddress) ?? "";
+  const namedSpecifier = specifierCandidates.map((v) => v?.trim() ?? "").find(isAddress);
 
   const chainId =
     [parseChainId(query.get("chain")), parseChainId(env.VITE_ANON_RPC_CHAIN_ID)].find((v) => v !== undefined) ??
     FALLBACK_SPECIFIER_CHAIN_ID;
+
+  // The released specifier lives on one chain: it is the default only there.
+  const specifier =
+    namedSpecifier ?? (chainId === RELEASED_SPECIFIER.chainId ? RELEASED_SPECIFIER.address : "");
 
   const rpcCandidates = [query.get("rpc"), env.VITE_ANON_RPC_SPECIFIER_RPC];
   const specifierRpc =

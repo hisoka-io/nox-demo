@@ -3,6 +3,7 @@ import { encodeFunctionResult, keccak256, toHex } from "viem";
 import {
   DEFAULT_ENTRIES,
   FALLBACK_SPECIFIER_CHAIN_ID,
+  RELEASED_SPECIFIER,
   HARNESS_VERSION,
   parseConfigText,
   resolveDefaults,
@@ -68,10 +69,20 @@ describe("page defaults", () => {
 
   it("ignores invalid values", () => {
     const d = resolveDefaults({ VITE_ANON_RPC_SPECIFIER: "nope", VITE_ANON_RPC_CHAIN_ID: "-3" }, "?rpc=ftp://x&target=mars");
-    expect(d.specifier).toBe("");
+    expect(d.specifier).toBe(RELEASED_SPECIFIER.address);
     expect(d.chainId).toBe(FALLBACK_SPECIFIER_CHAIN_ID);
     expect(d.specifierRpc).toBe(SPECIFIER_CHAINS.find((c) => c.id === FALLBACK_SPECIFIER_CHAIN_ID)?.rpcUrl);
     expect(d.targetPresetId).toBe(TARGET_PRESETS[0].id);
+  });
+
+  it("defaults to the released specifier on its own chain only", () => {
+    expect(resolveDefaults({}, "")).toMatchObject({
+      specifier: RELEASED_SPECIFIER.address,
+      chainId: RELEASED_SPECIFIER.chainId,
+      specifierRpc: "https://ethereum-sepolia-rpc.publicnode.com",
+    });
+    expect(resolveDefaults({}, "?chain=31337").specifier).toBe("");
+    expect(resolveDefaults({ VITE_ANON_RPC_CHAIN_ID: "421614" }, "").specifier).toBe("");
   });
 
   it("treats a blank config as no config", () => {

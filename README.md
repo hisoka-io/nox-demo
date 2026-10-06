@@ -28,7 +28,7 @@ Configuration (query string first, then build-time variables):
 
 | Query | Build variable | Meaning |
 | --- | --- | --- |
-| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address |
+| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the published worker 0.2.0, [`0x29b4a6A8Cc11769531854d87f9F33EC63Efe8fe6`](https://sepolia.etherscan.io/address/0x29b4a6A8Cc11769531854d87f9F33EC63Efe8fe6)) |
 | `chain` | `VITE_ANON_RPC_CHAIN_ID` | chain id of the specifier (default 11155111) |
 | `rpc` | `VITE_ANON_RPC_SPECIFIER_RPC` | RPC for the specifier read (default: the chain's public RPC) |
 | `target` | `VITE_ANON_RPC_TARGET` | chain for the wallet calls: `arbitrum-sepolia`, `ethereum`, `ethereum-sepolia` |
