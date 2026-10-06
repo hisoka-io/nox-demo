@@ -12,13 +12,19 @@ import "@fontsource/jetbrains-mono/latin-400.css";
 import "@fontsource/jetbrains-mono/latin-500.css";
 import "@fontsource/jetbrains-mono/latin-600.css";
 import "./index.css";
-import App from "./App.tsx";
-import { getClient } from "./lib/nox";
+import { isAnonRpcPath } from "./anon-rpc/route";
+import Root from "./Root.tsx";
 
-getClient();
+const anonRpc = isAnonRpcPath(window.location.pathname);
+
+// The Explorer connects to the mixnet as early as possible; the anon-rpc page
+// never loads the Explorer's client.
+if (!anonRpc) {
+  void import("./lib/nox").then(({ getClient }) => getClient());
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Root anonRpc={anonRpc} />
   </StrictMode>,
 );

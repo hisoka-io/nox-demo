@@ -12,9 +12,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "NOX_LIVE_TESTS=1 vitest run",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:anon-rpc": "node scripts/smoke-anon-rpc.mjs"
   },
   "dependencies": {
+    "@anon-rpc/browser-harness": "0.3.2",
     "@fontsource/instrument-serif": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
