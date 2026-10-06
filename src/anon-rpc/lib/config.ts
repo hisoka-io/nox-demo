@@ -154,12 +154,12 @@ function parseChainId(raw: string | null | undefined): number | undefined {
 export const FALLBACK_SPECIFIER_CHAIN_ID = 11155111;
 
 /**
- * The published Nox worker: @hisoka-io/anon-rpc-worker 0.2.0, pinned by an
+ * The published Nox worker: @hisoka-io/anon-rpc-worker 0.3.0, pinned by an
  * ImmutableWorkerSpecifier on Ethereum Sepolia (workerHash
- * 0x0a58f9915f686950072a4786249d396ecbf2194a39ac835effe8ea1a7c76f324).
+ * 0x24604525d220bcc7e39f2dbc22966a814600a63ada51baafad5dd0bcc1d28549).
  */
 export const RELEASED_SPECIFIER = {
-  address: "0x29b4a6A8Cc11769531854d87f9F33EC63Efe8fe6",
+  address: "0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB",
   chainId: 11155111,
 } as const;
 
