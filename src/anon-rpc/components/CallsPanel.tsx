@@ -36,7 +36,7 @@ function PhaseTimings({ timing, testId }: { timing: RequestTiming | null; testId
   if (timing === null) {
     return (
       <span className="text-[11px] text-fg-muted" data-testid={testId} data-state="none">
-        per-phase timing: worker 0.3 or later with logLevel debug
+        per-phase timing: worker 0.3 or later
       </span>
     );
   }

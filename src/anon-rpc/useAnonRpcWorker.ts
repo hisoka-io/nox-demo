@@ -71,7 +71,7 @@ export function useAnonRpcWorker() {
    * The last request timing the worker logged at or after `since` and no
    * later than `until` (the page runs one call at a time, so that is the
    * call's winning request). Null when the worker logged none (worker 0.2.0,
-   * or a logLevel above debug).
+   * or a logLevel above info).
    */
   const timingBetween = useCallback((since: number, until: number): RequestTiming | null => {
     const found = timingsRef.current.filter((timing) => timing.at >= since && timing.at <= until);

@@ -288,7 +288,7 @@ export function bootReducer(state: BootState, action: BootAction): BootState {
   }
 }
 
-/** Per-phase durations of one mixnet request, from the worker's `request.timing` log (worker 0.3 and later, logLevel debug). */
+/** Per-phase durations of one mixnet request, from the worker's `request.timing` log (worker 0.3 and later, logged at info). */
 export interface RequestTiming {
   at: number;
   totalMs: number | null;

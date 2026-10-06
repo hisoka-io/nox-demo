@@ -7,7 +7,6 @@ import {
   HARNESS_VERSION,
   parseConfigText,
   resolveDefaults,
-  withPhaseTimings,
   SPECIFIER_CHAINS,
   TARGET_PRESETS,
 } from "@/anon-rpc/lib/config";
@@ -96,10 +95,6 @@ describe("page defaults", () => {
   it("treats a blank config as no config", () => {
     expect(parseConfigText("  ")).toBeUndefined();
     expect(parseConfigText('{"v":1}')).toEqual({ v: 1 });
-    expect(withPhaseTimings(undefined)).toEqual({ logLevel: "debug" });
-    expect(withPhaseTimings({ v: 1 })).toEqual({ v: 1, logLevel: "debug" });
-    expect(withPhaseTimings({ logLevel: "warn" })).toEqual({ logLevel: "warn" });
-    expect(withPhaseTimings([1])).toEqual([1]);
     expect(() => parseConfigText("{")).toThrow();
   });
 
