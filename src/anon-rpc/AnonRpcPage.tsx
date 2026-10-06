@@ -24,7 +24,7 @@ const PHASE_BADGE: Record<Phase, { tone: "neutral" | "pending" | "success" | "er
 export default function AnonRpcPage() {
   const { theme, toggle } = useTheme();
   const defaults = useMemo(() => resolveDefaults(import.meta.env, window.location.search), []);
-  const { phase, boot, info, logs, worker, start, stop } = useAnonRpcWorker();
+  const { phase, boot, info, logs, worker, start, stop, timingBetween } = useAnonRpcWorker();
   const [config, setConfig] = useState<unknown>(undefined);
   const extraEntries = useMemo(() => configEntries(config), [config]);
   const badge = PHASE_BADGE[phase];
@@ -62,6 +62,19 @@ export default function AnonRpcPage() {
             Nox entry node over KPS (WebRTC with a pinned certificate hash), then every <span className="font-mono text-sm">fetch</span>{" "}
             becomes Sphinx packets through entry, mix and exit. The worker itself needs no seed server, indexer or DNS lookup.
           </p>
+          <p className="text-sm text-fg-secondary">
+            See the live node set and traffic on the{" "}
+            <a
+              href="https://map.hisoka.io"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="link-map"
+              className="text-accent hover:text-accent-light underline underline-offset-2"
+            >
+              Nox network map
+            </a>
+            .
+          </p>
         </section>
 
         {phase === "failed" && boot.failure && (
@@ -91,7 +104,7 @@ export default function AnonRpcPage() {
           </div>
         </div>
 
-        <CallsPanel workerFetch={worker ? worker.fetch : null} ready={phase === "ready"} />
+        <CallsPanel workerFetch={worker ? worker.fetch : null} ready={phase === "ready"} timingBetween={timingBetween} />
         <LogDrawer logs={logs} t0={boot.t0} />
       </main>
 

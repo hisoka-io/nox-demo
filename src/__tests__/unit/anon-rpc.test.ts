@@ -19,7 +19,14 @@ import {
   readSpecifier,
 } from "@/anon-rpc/lib/specifier";
 import { fetchVerifiedBundle, resolverKind } from "@/anon-rpc/lib/bundle";
-import { bootReducer, initialBootState, parseWorkerLog, type BootAction } from "@/anon-rpc/lib/timeline";
+import {
+  bootReducer,
+  initialBootState,
+  parseWorkerLog,
+  requestTiming,
+  stepDuration,
+  type BootAction,
+} from "@/anon-rpc/lib/timeline";
 import { configEntries, parseKpsAddress, resolveEntry } from "@/anon-rpc/lib/entries";
 import { describeError, hintForFailedCode } from "@/anon-rpc/lib/errors";
 import { buildRequest, compareValues, extractValues, formatUnits, runCall, summarize } from "@/anon-rpc/lib/calls";
@@ -213,6 +220,60 @@ describe("boot timeline", () => {
   it("marks a discovery problem as a warning on the snapshot floor", () => {
     const s = bootReducer(initialBootState(0), log("discovery.disagreement", { attempts: 3 }, "warn"));
     expect(s.steps.discovery.status).toBe("warn");
+  });
+
+  it("keeps a finished step's duration when the 600 s re-checks and later redials arrive (the 2445.54 s row)", () => {
+    // The production page showed "Registry check 2445.54 s": the first check took 45.53 s and four
+    // periodic re-checks (every 600 s) each re-closed the step. 2445.54 s = 4 x 600 s + 45.53 s.
+    let s = initialBootState(0);
+    s = bootReducer(s, { ...log("ready"), at: 1_000 } as BootAction);
+    s = bootReducer(s, { ...log("discovery.verified", { block: 1, members: 10, ms: 45_530 }), at: 46_530 } as BootAction);
+    for (let i = 1; i <= 4; i++) {
+      s = bootReducer(s, { ...log("discovery.verified", { block: 1 + i, members: 10, ms: 30_000 }), at: 46_530 + i * 600_000 } as BootAction);
+    }
+    expect(stepDuration(s.steps.discovery)).toBe(45_530);
+    expect(s.steps.discovery.detail).toContain("agreed in 45530 ms");
+    expect(s.later.filter((event) => event.kind === "recheck")).toHaveLength(4);
+    expect(s.later[0]).toMatchObject({ kind: "recheck", status: "done", ms: 30_000 });
+
+    // A redial long after boot is a connection event, not a re-closed dial step (the 2416.04 s row).
+    s = bootReducer(s, { ...log("anchor.dial", { anchor: "a" }), at: 100 } as BootAction);
+    s = bootReducer(s, { ...log("kps.dial.ok", { entry: "a", ms: 900 }), at: 1_000 } as BootAction);
+    const dialMs = stepDuration(s.steps.dial);
+    s = bootReducer(s, { ...log("kps.dial.failed", { entry: "a", code: "timeout" }, "warn"), at: 2_400_000 } as BootAction);
+    s = bootReducer(s, { ...log("entry.failover", { from: "a", to: "b" }, "warn"), at: 2_400_001 } as BootAction);
+    expect(stepDuration(s.steps.dial)).toBe(dialMs);
+    expect(s.steps.dial.status).toBe("done");
+    expect(s.later.filter((event) => event.kind === "connection")).toHaveLength(2);
+    expect(s.entryLabel).toBe("b");
+    expect(s.retries).toBe(0);
+  });
+
+  it("keeps a later discovery warning out of a step that already finished", () => {
+    let s = bootReducer(initialBootState(0), { ...log("discovery.verified", { block: 1, members: 10, ms: 5 }), at: 10 } as BootAction);
+    s = bootReducer(s, { ...log("discovery.failed", {}, "warn"), at: 600_010 } as BootAction);
+    expect(s.steps.discovery.status).toBe("done");
+    expect(s.steps.discovery.endedAt).toBe(10);
+    expect(s.later).toEqual([expect.objectContaining({ kind: "recheck", status: "warn" })]);
+  });
+
+  it("reads per-phase request timings from the worker's request.timing log", () => {
+    const line = parseWorkerLog({
+      level: "debug",
+      args: ["nox-worker", "request.timing", { totalMs: 900, uploadMs: 300, waitMs: 0, claimMs: 400, downloadMs: 150, decodeMs: 6, claimBytes: 32_310, format: "binary" }],
+    });
+    expect(requestTiming(line, 42)).toEqual({
+      at: 42,
+      totalMs: 900,
+      uploadMs: 300,
+      waitMs: 0,
+      claimMs: 400,
+      downloadMs: 150,
+      decodeMs: 6,
+      claimBytes: 32_310,
+      format: "binary",
+    });
+    expect(requestTiming(parseWorkerLog({ level: "info", args: ["nox-worker", "ready", {}] }), 1)).toBeNull();
   });
 
   it("keeps non-Nox log lines as text", () => {

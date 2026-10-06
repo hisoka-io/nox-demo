@@ -1,6 +1,14 @@
 import { useState, type ChangeEvent } from "react";
 import { Play, Square, FileCode } from "lucide-react";
-import { chainById, HARNESS_VERSION, isAddress, isHttpUrl, parseConfigText, SPECIFIER_CHAINS, type PageDefaults } from "../lib/config";
+import {
+  chainById,
+  HARNESS_VERSION,
+  isAddress,
+  isHttpUrl,
+  parseConfigText,
+  SPECIFIER_CHAINS,
+  type PageDefaults,
+} from "../lib/config";
 import { bundleHash, formatBytes } from "../lib/bundle";
 import { inputClass } from "../lib/format";
 import type { BootRequest, Phase } from "../useAnonRpcWorker";
