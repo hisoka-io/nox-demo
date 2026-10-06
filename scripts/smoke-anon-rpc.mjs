@@ -124,6 +124,8 @@ if (failures.length === 0) {
     if (!/certhash u[A-Za-z0-9_-]{6,}/.test(report.entry)) failures.push(`active entry not shown: ${report.entry}`);
     if (!/0x[0-9a-f]{64}/.test(report.hash)) failures.push(`bundle hash not shown: ${report.hash}`);
 
+    // Turn on the direct comparison so the smoke also checks the results agree.
+    await page.getByTestId("input-compare").check();
     await page.getByTestId("call-run-all").click();
     for (const id of CALLS) {
       const anon = page.getByTestId(`call-${id}-anon`);

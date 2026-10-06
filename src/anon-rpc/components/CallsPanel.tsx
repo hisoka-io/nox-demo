@@ -57,7 +57,8 @@ export function CallsPanel({ workerFetch, ready }: { workerFetch: FetchLike | nu
   const [rpcUrl, setRpcUrl] = useState(preset.rpcUrl);
   const [address, setAddress] = useState(preset.sampleAddress);
   const [token, setToken] = useState(preset.token.address);
-  const [compare, setCompare] = useState(true);
+  const [compare, setCompare] = useState(false);
+  const [batchRunning, setBatchRunning] = useState(false);
   const [rows, setRows] = useState<Record<CallId, Row>>(() =>
     Object.fromEntries(CALLS.map((c) => [c.id, IDLE_ROW])) as Record<CallId, Row>,
   );
@@ -102,7 +103,7 @@ export function CallsPanel({ workerFetch, ready }: { workerFetch: FetchLike | nu
     const callInputs = inputs();
     if (!callInputs) return;
     const url = rpcUrl.trim();
-    const tasks = ids.map(async (id) => {
+    const runOne = async (id: CallId) => {
       setRows((prev) => ({
         ...prev,
         [id]: { anon: { state: "running" }, direct: compare ? { state: "running" } : { state: "idle" } },
@@ -118,11 +119,18 @@ export function CallsPanel({ workerFetch, ready }: { workerFetch: FetchLike | nu
           )
         : Promise.resolve();
       await Promise.all([anon, direct]);
-    });
-    await Promise.all(tasks);
+    };
+    // One call at a time: each call gets the worker's full attention, so the
+    // timings shown match what a wallet sees for a single request.
+    setBatchRunning(true);
+    try {
+      for (const id of ids) await runOne(id);
+    } finally {
+      setBatchRunning(false);
+    }
   };
 
-  const busy = Object.values(rows).some((r) => r.anon.state === "running");
+  const busy = batchRunning || Object.values(rows).some((r) => r.anon.state === "running");
 
   return (
     <Panel
