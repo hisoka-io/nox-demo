@@ -122,6 +122,24 @@ export function IdentityPanel({
         )}
       </KeyValue>
 
+      <KeyValue label="Wallet call transport" testId="info-transport">
+        {boot.tls === null ? (
+          <span className="text-fg-muted">reported by the worker at boot (worker 0.4 and later)</span>
+        ) : boot.tls.mode === "off" ? (
+          <span className="text-fg">exit HTTP request (config sets tls off)</span>
+        ) : (
+          <span className="flex flex-col gap-0.5">
+            <span className="text-fg">
+              end-to-end TLS <Mono className="text-fg-secondary">{boot.tls.mode}</Mono>
+            </span>
+            <span className="text-xs text-fg-muted">
+              TLS runs inside the worker, {boot.tls.session} sessions
+              {boot.tls.roots !== null ? `, ${boot.tls.roots} Mozilla root certificates in the bundle` : ""}; exits relay encrypted records
+            </span>
+          </span>
+        )}
+      </KeyValue>
+
       <KeyValue label="Membership source">
         <span className="flex flex-col gap-0.5">
           <ExtLink href={explorerAddressUrl(NOX_REGISTRY.explorer, NOX_REGISTRY.address)}>

@@ -13,12 +13,12 @@ const HOPS: { who: string; sees: string; tone: string }[] = [
   },
   {
     who: "Exit node",
-    sees: "The HTTP request (RPC URL and JSON body) it performs for you, and never who sent it. The reply travels back over single-use reply blocks (SURBs).",
+    sees: "For https calls: the RPC provider's host name and the size and timing of the TLS records it relays, and never who sent them. The request and the reply stay encrypted between the worker and the provider; the reply travels back over single-use reply blocks (SURBs).",
     tone: "var(--color-node-exit)",
   },
   {
     who: "RPC provider",
-    sees: "The exit node's IP address and the request. Your IP address stays with the entry.",
+    sees: "The exit node's IP address and the request, over a TLS session that ends inside the worker. Your IP address stays with the entry.",
     tone: "var(--color-fg-muted)",
   },
 ];
@@ -59,8 +59,10 @@ export function PrivacyPanel() {
             this page to the RPC you choose; a wallet can make them from its own node.
           </li>
           <li>
-            <strong className="text-fg">Next milestone: end-to-end TLS inside the worker</strong>, so the exit relays
-            encrypted bytes only and the request is visible to the RPC provider alone.
+            <strong className="text-fg">End-to-end TLS.</strong> From worker 0.4 the worker runs TLS 1.3 itself
+            (rustls, compiled to WebAssembly inside the bundle) and checks the provider's certificate against the
+            Mozilla root store shipped in the bundle. Each call uses its own TLS session by default. Each call below
+            shows the transport it used.
           </li>
         </ul>
       </div>

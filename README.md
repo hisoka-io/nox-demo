@@ -20,7 +20,9 @@ The exit node fetches the data; it never sees who asked. Fonts are bundled, and 
 1. loads `@anon-rpc/browser-harness` 0.3.2, the version the reference anon-rpc demo pins;
 2. reads the worker specifier (`workerHash()`, `workerResolvers()`) through the RPC you choose, downloads the bundle and checks its keccak-256;
 3. runs the bundle in the harness's null-origin sandbox; the worker dials a Nox entry node over KPS (WebRTC with a pinned certificate hash);
-4. sends wallet calls (`eth_chainId`, `eth_blockNumber`, `eth_getBalance`, an ERC-20 `balanceOf`, a JSON-RPC batch) through `worker.fetch`, each next to the same call made directly, with timings.
+4. sends wallet calls (`eth_chainId`, `eth_blockNumber`, `eth_getBalance`, an ERC-20 `balanceOf`, a JSON-RPC batch) through `worker.fetch`, each next to the same call made directly, with timings and the transport the call used.
+
+With worker 0.4.0 the calls use end-to-end TLS: the worker runs TLS itself and the exit relays encrypted records, so the request is readable by the RPC provider alone. The page shows the worker's TLS setting (from its `boot.tls` log) and, per call, `end-to-end TLS` or `exit HTTP request`.
 
 The page shows a live boot timeline, the active entry (KPS address and certhash), the bundle hash and specifier with explorer links, the worker's log, and the worker's structured error codes. A developer option boots a local bundle file under the same keccak check.
 
@@ -28,7 +30,7 @@ Configuration (query string first, then build-time variables):
 
 | Query | Build variable | Meaning |
 | --- | --- | --- |
-| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the published worker 0.3.0, [`0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB`](https://sepolia.etherscan.io/address/0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB)) |
+| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the published worker 0.4.0, [`0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d`](https://sepolia.etherscan.io/address/0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d); the worker 0.3.0 specifier `0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB` still boots with `?specifier=`) |
 | `chain` | `VITE_ANON_RPC_CHAIN_ID` | chain id of the specifier (default 11155111) |
 | `rpc` | `VITE_ANON_RPC_SPECIFIER_RPC` | RPC for the specifier read (default: the chain's public RPC) |
 | `target` | `VITE_ANON_RPC_TARGET` | chain for the wallet calls: `arbitrum-sepolia`, `ethereum`, `ethereum-sepolia` |
@@ -50,7 +52,7 @@ pnpm smoke https://demo.nox.hisoka.io/ # same, against production
 pnpm smoke:anon-rpc [site-url]         # boot /anon-rpc from a cold browser and run the wallet calls
 ```
 
-`smoke:anon-rpc` also takes `ANON_RPC_SPECIFIER`, `ANON_RPC_CHAIN`, `ANON_RPC_SPECIFIER_RPC`, `ANON_RPC_CONFIG`, `ANON_RPC_BUNDLE` (boot a local bundle file) and `ANON_RPC_REPORT` (write a JSON timing report).
+`smoke:anon-rpc` also takes `ANON_RPC_SPECIFIER`, `ANON_RPC_CHAIN`, `ANON_RPC_SPECIFIER_RPC`, `ANON_RPC_CONFIG`, `ANON_RPC_BUNDLE` (boot a local bundle file), `ANON_RPC_EXPECT_TRANSPORT` (require `tls-tunnel` or `exit-http` on every call) and `ANON_RPC_REPORT` (write a JSON timing report).
 
 `pnpm smoke` needs a Chromium for Playwright (`pnpm exec playwright install chromium-headless-shell`). It fails if the page contacts a host outside its allowlist.
 
