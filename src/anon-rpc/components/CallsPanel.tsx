@@ -1,23 +1,45 @@
 import { useState, type ReactNode } from "react";
-import { Shield, Globe, Play } from "lucide-react";
+import { Shield, Globe, Play, Lock } from "lucide-react";
 import { CALLS, compareValues, runCall, type CallId, type CallInputs, type CallResult, type FetchLike } from "../lib/calls";
 import { isAddress, isHttpUrl, TARGET_PRESETS, targetPresetById, explorerAddressUrl } from "../lib/config";
 import { describeError, type ErrorView } from "../lib/errors";
 import { formatMs, inputClass } from "../lib/format";
-import type { RequestTiming } from "../lib/timeline";
+import type { CallTransport, RequestTiming } from "../lib/timeline";
 import { hostOf } from "../lib/specifier";
 import { Badge, ExtLink, Field, Mono, Panel } from "./ui";
 
 type PathState =
   | { state: "idle" }
   | { state: "running" }
-  | { state: "ok"; result: CallResult; startedAt?: number; endedAt?: number }
+  | { state: "ok"; result: CallResult; startedAt?: number; endedAt?: number; rpcUrl?: string }
   | { state: "error"; error: ErrorView };
 
 /** How long after a call settles its `request.timing` log line may still arrive. */
 const TIMING_LOG_SLACK_MS = 500;
 
 export type TimingLookup = (since: number, until: number) => RequestTiming | null;
+export type TransportLookup = (since: number, until: number, rpcUrl: string) => CallTransport | null;
+
+const TRANSPORT_TEXT: Record<CallTransport, string> = {
+  "tls-tunnel": "end-to-end TLS: exits relay encrypted records only",
+  "exit-http": "exit HTTP request",
+  local: "answered in the worker from a verified earlier reply",
+};
+
+/** The transport the call used between the worker and the RPC provider. */
+function TransportLine({ transport, testId }: { transport: CallTransport; testId: string }) {
+  const encrypted = transport === "tls-tunnel";
+  return (
+    <span
+      className={`flex items-center gap-1 text-[11px] ${encrypted ? "text-[var(--color-olive)]" : "text-fg-muted"}`}
+      data-testid={testId}
+      data-transport={transport}
+    >
+      {encrypted && <Lock size={11} />}
+      {TRANSPORT_TEXT[transport]}
+    </span>
+  );
+}
 
 const PHASES: readonly { key: keyof RequestTiming; label: string }[] = [
   { key: "uploadMs", label: "upload" },
@@ -73,12 +95,14 @@ function PathCell({
   path,
   testId,
   timing,
+  transport,
 }: {
   label: string;
   icon: ReactNode;
   path: PathState;
   testId: string;
   timing?: RequestTiming | null;
+  transport?: CallTransport | null;
 }) {
   return (
     <div className="flex flex-col gap-1 min-w-0" data-testid={testId} data-state={path.state}>
@@ -95,7 +119,11 @@ function PathCell({
         </span>
       )}
       {path.state === "ok" && <span className="text-sm text-fg break-words font-mono">{path.result.summary}</span>}
-      {path.state === "ok" && timing !== undefined && <PhaseTimings timing={timing} testId={`${testId}-phases`} />}
+      {path.state === "ok" && transport != null && <TransportLine transport={transport} testId={`${testId}-transport`} />}
+      {/* Phase timings describe an exit HTTP request; tunnel calls and worker answers log none of their own. */}
+      {path.state === "ok" && timing !== undefined && (transport == null || transport === "exit-http") && (
+        <PhaseTimings timing={timing} testId={`${testId}-phases`} />
+      )}
       {path.state === "error" && (
         <span className="text-xs text-error break-words">
           {path.error.code && (
@@ -115,10 +143,12 @@ export function CallsPanel({
   workerFetch,
   ready,
   timingBetween,
+  transportBetween,
 }: {
   workerFetch: FetchLike | null;
   ready: boolean;
   timingBetween?: TimingLookup;
+  transportBetween?: TransportLookup;
 }) {
   const [presetId, setPresetId] = useState(TARGET_PRESETS[0].id);
   const preset = targetPresetById(presetId) ?? TARGET_PRESETS[0];
@@ -178,7 +208,7 @@ export function CallsPanel({
       }));
       const startedAt = performance.now();
       const anon = runCall(workerFetch, url, id, callInputs).then(
-        (result) => setPath(id, "anon", { state: "ok", result, startedAt, endedAt: performance.now() }),
+        (result) => setPath(id, "anon", { state: "ok", result, startedAt, endedAt: performance.now(), rpcUrl: url }),
         (error: unknown) => setPath(id, "anon", { state: "error", error: describeError(error) }),
       );
       const direct = compare
@@ -234,7 +264,7 @@ export function CallsPanel({
               ))}
             </select>
           </Field>
-          <Field label="Public RPC URL (the exit node calls it)">
+          <Field label="Public RPC URL (reached through the exit node)">
             <input
               data-testid="input-target-rpc"
               className={inputClass}
@@ -337,6 +367,15 @@ export function CallsPanel({
                     timing={
                       row.anon.state === "ok" && timingBetween && row.anon.startedAt !== undefined && row.anon.endedAt !== undefined
                         ? timingBetween(row.anon.startedAt, row.anon.endedAt + TIMING_LOG_SLACK_MS)
+                        : undefined
+                    }
+                    transport={
+                      row.anon.state === "ok" &&
+                      transportBetween &&
+                      row.anon.startedAt !== undefined &&
+                      row.anon.endedAt !== undefined &&
+                      row.anon.rpcUrl !== undefined
+                        ? transportBetween(row.anon.startedAt, row.anon.endedAt + TIMING_LOG_SLACK_MS, row.anon.rpcUrl)
                         : undefined
                     }
                   />

@@ -61,6 +61,16 @@ export interface LaterEvent {
   ms: number | null;
 }
 
+/** How the worker carries wallet calls, as it reports at boot. */
+export interface TlsSetting {
+  /** "required", "preferred" or "off". */
+  mode: string;
+  /** "per-call" or "keep-alive". */
+  session: string;
+  /** Number of Mozilla root certificates compiled into the bundle (webpki-roots). */
+  roots: number | null;
+}
+
 /** Later events kept (newest last). */
 export const LATER_EVENTS_KEPT = 20;
 
@@ -73,6 +83,8 @@ export interface BootState {
   entryDialMs: number | null;
   members: number | null;
   retries: number;
+  /** The worker's TLS setting for wallet calls, from its `boot.tls` log (worker 0.4 and later). */
+  tls: TlsSetting | null;
   failure: { code: string | null; message: string } | null;
 }
 
@@ -86,7 +98,7 @@ export type BootAction =
 export function initialBootState(at = 0): BootState {
   const steps = {} as Record<StepId, Step>;
   for (const id of STEP_ORDER) steps[id] = { id, label: LABELS[id], status: "pending" };
-  return { t0: at, steps, later: [], entryLabel: null, entryDialMs: null, members: null, retries: 0, failure: null };
+  return { t0: at, steps, later: [], entryLabel: null, entryDialMs: null, members: null, retries: 0, tls: null, failure: null };
 }
 
 function isLogLevel(value: unknown): value is LogLevel {
@@ -194,6 +206,8 @@ function applyLog(state: BootState, at: number, log: WorkerLog): BootState {
         ...setStep(state, "sandbox", state.steps.sandbox.status, at, `snapshot block ${str(f.block)}, ${str(f.members)} members, ${str(f.anchors)} anchors`),
         members: typeof f.members === "number" ? f.members : state.members,
       };
+    case "boot.tls":
+      return { ...state, tls: { mode: str(f.mode), session: str(f.session), roots: num(f.roots) } };
     case "boot.wasm":
       return activate(finishThrough(state, "wasm", at, "nox-wasm compiled in the worker"), "dial", at);
     case "anchor.dial":
@@ -321,4 +335,52 @@ export function requestTiming(log: WorkerLog, at: number): RequestTiming | null 
 export function stepDuration(step: Step): number | null {
   if (step.startedAt === undefined || step.endedAt === undefined) return null;
   return Math.max(0, Math.round(step.endedAt - step.startedAt));
+}
+
+/** How one wallet call travelled between the worker and the RPC provider. */
+export type CallTransport = "tls-tunnel" | "exit-http" | "local";
+
+/** A worker log line that says a call left the TLS tunnel path. */
+export interface TransportEvent {
+  at: number;
+  kind: "fallback" | "local";
+}
+
+/**
+ * `tls.fallback` (info: the call went out as an exit HTTP request) and a
+ * `call.done` with `local` (debug: the worker answered from its own verified
+ * answers and sent nothing), or null for any other log line.
+ */
+export function transportEvent(log: WorkerLog, at: number): TransportEvent | null {
+  if (log.event === "tls.fallback") return { at, kind: "fallback" };
+  if (log.event === "call.done" && typeof log.fields.local === "string") return { at, kind: "local" };
+  return null;
+}
+
+const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/** The worker opens tunnels for https on port 443 to a host given by name. */
+export function tunnelEligible(rpcUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(rpcUrl);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  if (url.port !== "" && url.port !== "443") return false;
+  return !IPV4_RE.test(url.hostname) && !url.hostname.startsWith("[");
+}
+
+/**
+ * Transport of a call that succeeded, from the worker's TLS setting, the
+ * call's URL and the transport events logged while it ran. Null when the
+ * worker reported no TLS setting (worker 0.3 and earlier).
+ */
+export function callTransport(tls: TlsSetting | null, rpcUrl: string, events: readonly TransportEvent[]): CallTransport | null {
+  if (tls === null) return null;
+  if (events.some((event) => event.kind === "local")) return "local";
+  if (tls.mode !== "required" && tls.mode !== "preferred") return "exit-http";
+  if (!tunnelEligible(rpcUrl)) return "exit-http";
+  return events.some((event) => event.kind === "fallback") ? "exit-http" : "tls-tunnel";
 }

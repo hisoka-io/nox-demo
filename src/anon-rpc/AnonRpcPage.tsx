@@ -24,7 +24,7 @@ const PHASE_BADGE: Record<Phase, { tone: "neutral" | "pending" | "success" | "er
 export default function AnonRpcPage() {
   const { theme, toggle } = useTheme();
   const defaults = useMemo(() => resolveDefaults(import.meta.env, window.location.search), []);
-  const { phase, boot, info, logs, worker, start, stop, timingBetween } = useAnonRpcWorker();
+  const { phase, boot, info, logs, worker, start, stop, timingBetween, transportBetween } = useAnonRpcWorker();
   const [config, setConfig] = useState<unknown>(undefined);
   const extraEntries = useMemo(() => configEntries(config), [config]);
   const badge = PHASE_BADGE[phase];
@@ -60,7 +60,9 @@ export default function AnonRpcPage() {
             This page loads the reference <span className="font-mono text-sm">anon-rpc</span> browser harness, reads the
             Nox worker's specifier on chain, checks the bundle's keccak-256, and runs it in a sandbox. The worker dials a
             Nox entry node over KPS (WebRTC with a pinned certificate hash), then every <span className="font-mono text-sm">fetch</span>{" "}
-            becomes Sphinx packets through entry, mix and exit. The worker itself needs no seed server, indexer or DNS lookup.
+            becomes Sphinx packets through entry, mix and exit. Calls to an <span className="font-mono text-sm">https</span> RPC run
+            TLS inside the worker, so the exit relays encrypted records and the request is readable by the RPC provider alone.
+            The worker itself needs no seed server, indexer or DNS lookup.
           </p>
           <p className="text-sm text-fg-secondary">
             See the live node set and traffic on the{" "}
@@ -104,7 +106,7 @@ export default function AnonRpcPage() {
           </div>
         </div>
 
-        <CallsPanel workerFetch={worker ? worker.fetch : null} ready={phase === "ready"} timingBetween={timingBetween} />
+        <CallsPanel workerFetch={worker ? worker.fetch : null} ready={phase === "ready"} timingBetween={timingBetween} transportBetween={transportBetween} />
         <LogDrawer logs={logs} t0={boot.t0} />
       </main>
 

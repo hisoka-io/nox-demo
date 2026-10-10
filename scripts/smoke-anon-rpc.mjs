@@ -11,6 +11,7 @@
 //   ANON_RPC_BUNDLE      path to a worker bundle: boot it with the page's "bundle file" option
 //   ANON_RPC_CONFIG      worker config JSON (for example {"gateways":["<ip>:15005:<certhash>"]})
 //   ANON_RPC_TARGET      wallet-call chain preset id (arbitrum-sepolia, ethereum, ethereum-sepolia)
+//   ANON_RPC_EXPECT_TRANSPORT  require this transport on every call (tls-tunnel, exit-http)
 //   ANON_RPC_REPORT      write a JSON report of timings to this path
 //   SMOKE_CHROMIUM       Chromium executable
 //
@@ -31,6 +32,7 @@ for (const [param, env] of [
   if (process.env[env]) target.searchParams.set(param, process.env[env]);
 }
 const bundlePath = process.env.ANON_RPC_BUNDLE || "";
+const expectTransport = process.env.ANON_RPC_EXPECT_TRANSPORT || "";
 
 const BOOT_TIMEOUT = 150_000;
 const CALL_TIMEOUT = 90_000;
@@ -119,6 +121,8 @@ if (failures.length === 0) {
     report.entry = await text("active-entry");
     report.hash = await text("info-hash");
     report.specifier = await text("info-specifier");
+    report.transport = await text("info-transport");
+    console.log(`transport: ${report.transport}`);
     console.log(`entry: ${report.entry}`);
     console.log(`hash: ${report.hash}`);
     if (!/certhash u[A-Za-z0-9_-]{6,}/.test(report.entry)) failures.push(`active entry not shown: ${report.entry}`);
@@ -161,8 +165,13 @@ if (failures.length === 0) {
       const anonText = (await anon.innerText()).replace(/\s+/g, " ");
       const directText = (await page.getByTestId(`call-${id}-direct`).innerText()).replace(/\s+/g, " ");
       const compare = ((await page.getByTestId(`call-${id}-compare`).textContent({ timeout: 2_000 }).catch(() => "")) ?? "").trim();
-      report.calls[id] = { state, anon: anonText, direct: directText, compare };
-      console.log(`${state === "ok" ? "ok   " : "FAIL "} ${id}: ${anonText} | ${directText} | ${compare}`);
+      const transport =
+        (await page.getByTestId(`call-${id}-anon-transport`).getAttribute("data-transport", { timeout: 2_000 }).catch(() => null)) ?? "";
+      report.calls[id] = { state, anon: anonText, direct: directText, compare, transport };
+      console.log(`${state === "ok" ? "ok   " : "FAIL "} ${id}: ${anonText} | ${directText} | ${compare}${transport ? ` | transport ${transport}` : ""}`);
+      if (expectTransport && state === "ok" && transport !== expectTransport) {
+        failures.push(`call ${id}: transport ${transport || "(none shown)"}, expected ${expectTransport}`);
+      }
       if (state !== "ok") failures.push(`call ${id}: ${anonText}`);
       if (compare === "results differ") failures.push(`call ${id}: Nox and direct results differ`);
     }

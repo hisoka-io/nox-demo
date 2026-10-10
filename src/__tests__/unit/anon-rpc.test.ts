@@ -21,7 +21,10 @@ import {
 import { fetchVerifiedBundle, resolverKind } from "@/anon-rpc/lib/bundle";
 import {
   bootReducer,
+  callTransport,
   initialBootState,
+  transportEvent,
+  tunnelEligible,
   parseWorkerLog,
   requestTiming,
   stepDuration,
@@ -274,6 +277,38 @@ describe("boot timeline", () => {
       format: "binary",
     });
     expect(requestTiming(parseWorkerLog({ level: "info", args: ["nox-worker", "ready", {}] }), 1)).toBeNull();
+  });
+
+  it("records the worker's TLS setting from boot.tls", () => {
+    expect(initialBootState(0).tls).toBeNull();
+    const s = bootReducer(initialBootState(0), log("boot.tls", { mode: "required", session: "per-call", roots: 146 }));
+    expect(s.tls).toEqual({ mode: "required", session: "per-call", roots: 146 });
+  });
+
+  it("names the transport of a call from the TLS setting, the URL and the worker's log", () => {
+    const required = { mode: "required", session: "per-call", roots: 146 };
+    const https = "https://sepolia-rollup.arbitrum.io/rpc";
+    expect(callTransport(null, https, [])).toBeNull();
+    expect(callTransport(required, https, [])).toBe("tls-tunnel");
+    expect(callTransport({ ...required, mode: "off" }, https, [])).toBe("exit-http");
+    expect(callTransport({ ...required, mode: "preferred" }, https, [])).toBe("tls-tunnel");
+    expect(callTransport({ ...required, mode: "preferred" }, https, [{ at: 5, kind: "fallback" }])).toBe("exit-http");
+    expect(callTransport({ ...required, mode: "preferred" }, "http://rpc.example/", [])).toBe("exit-http");
+    expect(callTransport(required, https, [{ at: 5, kind: "local" }])).toBe("local");
+
+    expect(tunnelEligible("https://rpc.example/key")).toBe(true);
+    expect(tunnelEligible("https://rpc.example:443/")).toBe(true);
+    expect(tunnelEligible("https://rpc.example:8443/")).toBe(false);
+    expect(tunnelEligible("https://10.0.0.1/")).toBe(false);
+    expect(tunnelEligible("https://[::1]/")).toBe(false);
+    expect(tunnelEligible("http://rpc.example/")).toBe(false);
+    expect(tunnelEligible("not a url")).toBe(false);
+
+    const line = (event: string, fields: Record<string, unknown>) => parseWorkerLog({ level: "info", args: ["nox-worker", event, fields] });
+    expect(transportEvent(line("tls.fallback", { reason: "no-tunnel-exit" }), 7)).toEqual({ at: 7, kind: "fallback" });
+    expect(transportEvent(line("call.done", { seq: 2, outcome: "ok", local: "chain-id" }), 8)).toEqual({ at: 8, kind: "local" });
+    expect(transportEvent(line("call.done", { seq: 3, outcome: "ok" }), 9)).toBeNull();
+    expect(transportEvent(line("request.timing", { totalMs: 5 }), 9)).toBeNull();
   });
 
   it("keeps non-Nox log lines as text", () => {

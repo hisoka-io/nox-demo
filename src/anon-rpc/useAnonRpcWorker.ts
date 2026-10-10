@@ -3,7 +3,18 @@ import { AnonRpcWorker } from "@anon-rpc/browser-harness";
 import type { Hex } from "viem";
 import { bundleHash, fetchVerifiedBundle, formatBytes, type ResolverOutcome } from "./lib/bundle";
 import { localSpecifierAddress, memoryProvider, readSpecifier, hostOf } from "./lib/specifier";
-import { bootReducer, initialBootState, parseWorkerLog, requestTiming, type LogLevel, type RequestTiming } from "./lib/timeline";
+import {
+  bootReducer,
+  callTransport,
+  initialBootState,
+  parseWorkerLog,
+  requestTiming,
+  transportEvent,
+  type CallTransport,
+  type LogLevel,
+  type RequestTiming,
+  type TransportEvent,
+} from "./lib/timeline";
 
 export type BootSource =
   | { kind: "specifier"; address: string; chainId: number; rpcUrl: string }
@@ -38,7 +49,7 @@ export type Phase = "idle" | "booting" | "ready" | "failed";
 /** Rows kept for the log drawer (the harness keeps its own bounded queue). */
 const LOG_ROWS = 500;
 
-/** `request.timing` entries kept for matching to calls. */
+/** `request.timing` entries and transport events kept for matching to calls. */
 const TIMINGS_KEPT = 64;
 
 class PageBootError extends Error {
@@ -66,6 +77,7 @@ export function useAnonRpcWorker() {
   const runRef = useRef(0);
   const logIdRef = useRef(0);
   const timingsRef = useRef<RequestTiming[]>([]);
+  const transportEventsRef = useRef<TransportEvent[]>([]);
 
   /**
    * The last request timing the worker logged at or after `since` and no
@@ -77,6 +89,20 @@ export function useAnonRpcWorker() {
     const found = timingsRef.current.filter((timing) => timing.at >= since && timing.at <= until);
     return found.length === 0 ? null : found[found.length - 1]!;
   }, []);
+  /**
+   * How a call that ran from `since` to `until` reached `rpcUrl`: through a
+   * TLS tunnel, as an exit HTTP request, or answered in the worker. Null
+   * when the worker reported no TLS setting (worker 0.3 and earlier).
+   */
+  const transportBetween = useCallback(
+    (since: number, until: number, rpcUrl: string): CallTransport | null =>
+      callTransport(
+        boot.tls,
+        rpcUrl,
+        transportEventsRef.current.filter((event) => event.at >= since && event.at <= until),
+      ),
+    [boot.tls],
+  );
   const pushLog = useCallback((source: LogLine["source"], level: LogLevel, text: string) => {
     const line: LogLine = { id: ++logIdRef.current, at: performance.now(), source, level, text };
     setLogs((prev) => (prev.length >= LOG_ROWS ? [...prev.slice(prev.length - LOG_ROWS + 1), line] : [...prev, line]));
@@ -110,6 +136,7 @@ export function useAnonRpcWorker() {
       setWorker(null);
       setLogs([]);
       timingsRef.current = [];
+      transportEventsRef.current = [];
       const now = () => performance.now();
 
       try {
@@ -214,6 +241,10 @@ export function useAnonRpcWorker() {
             if (timing !== null) {
               timingsRef.current = [...timingsRef.current.slice(-(TIMINGS_KEPT - 1)), timing];
             }
+            const moved = transportEvent(log, at);
+            if (moved !== null) {
+              transportEventsRef.current = [...transportEventsRef.current.slice(-(TIMINGS_KEPT - 1)), moved];
+            }
             dispatch({ type: "log", at, log });
             pushLog("worker", log.level, log.text);
           }
@@ -242,5 +273,5 @@ export function useAnonRpcWorker() {
 
   const effectivePhase: Phase = phase === "ready" && boot.failure !== null ? "failed" : phase;
 
-  return { phase: effectivePhase, boot, info, logs, worker, start, stop, pushLog, timingBetween };
+  return { phase: effectivePhase, boot, info, logs, worker, start, stop, pushLog, timingBetween, transportBetween };
 }
