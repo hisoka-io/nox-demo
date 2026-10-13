@@ -1,6 +1,6 @@
 import type { BootInfo } from "../useAnonRpcWorker";
 import type { BootState } from "../lib/timeline";
-import { chainById, explorerAddressUrl, NOX_REGISTRY } from "../lib/config";
+import { chainById, explorerAddressUrl, NOX_REGISTRY, RELEASED_SPECIFIER } from "../lib/config";
 import { resolveEntry } from "../lib/entries";
 import type { KnownEntry } from "../lib/config";
 import { formatBytes, resolverKind } from "../lib/bundle";
@@ -18,6 +18,11 @@ export function IdentityPanel({
 }) {
   const chain = info?.chainId != null ? chainById(info.chainId) : undefined;
   const entry = boot.entryLabel ? resolveEntry(boot.entryLabel, extraEntries) : null;
+  const isStableSpecifier =
+    info !== null &&
+    info.fileName === null &&
+    info.chainId === RELEASED_SPECIFIER.chainId &&
+    info.specifier.toLowerCase() === RELEASED_SPECIFIER.address.toLowerCase();
 
   return (
     <Panel title="Worker identity and entry" testId="identity-panel">
@@ -34,7 +39,10 @@ export function IdentityPanel({
             <ExtLink href={explorerAddressUrl(chain.explorer, info.specifier)}>
               <Mono>{info.specifier}</Mono>
             </ExtLink>
-            <span className="text-xs text-fg-muted">on {chain.name} ({chain.id})</span>
+            <span className="text-xs text-fg-muted">
+              on {chain.name} ({chain.id})
+              {isStableSpecifier ? " · stable Nox specifier, follows worker releases" : ""}
+            </span>
           </span>
         ) : (
           <span className="flex flex-col gap-0.5">

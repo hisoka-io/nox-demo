@@ -5,9 +5,8 @@
 // link can point at any published specifier.
 
 /**
- * The @anon-rpc/browser-harness version this page loads: the one the reference
- * anon-rpc demo pins. package.json pins the same version exactly (a unit test
- * keeps the two equal).
+ * The @anon-rpc/browser-harness version this page loads. package.json pins the
+ * same version exactly (a unit test keeps the two equal).
  */
 export const HARNESS_VERSION = "0.3.2";
 
@@ -154,12 +153,15 @@ function parseChainId(raw: string | null | undefined): number | undefined {
 export const FALLBACK_SPECIFIER_CHAIN_ID = 11155111;
 
 /**
- * The published Nox worker: @hisoka-io/anon-rpc-worker 0.4.0 (end-to-end
- * TLS), pinned by an ImmutableWorkerSpecifier on Ethereum Sepolia (workerHash
- * 0xd8bef626ec8511d7a468bca5137880680ca2da20d2ea4d9c981a2a3d0c86ba1e).
+ * The Nox worker specifier on Ethereum Sepolia: one stable address that
+ * follows the current release (today @hisoka-io/anon-rpc-worker 0.4.0). It is
+ * the reference WorkerSpecifier of ethereum/anon-rpc, which its owner
+ * repoints at each worker release with setWorker. Each release also has an
+ * immutable per-release pin, usable with ?specifier= (0.4.0:
+ * 0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d).
  */
 export const RELEASED_SPECIFIER = {
-  address: "0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d",
+  address: "0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A",
   chainId: 11155111,
 } as const;
 
@@ -178,7 +180,7 @@ export function resolveDefaults(env: Env, search: string): PageDefaults {
     [parseChainId(query.get("chain")), parseChainId(env.VITE_ANON_RPC_CHAIN_ID)].find((v) => v !== undefined) ??
     FALLBACK_SPECIFIER_CHAIN_ID;
 
-  // The released specifier lives on one chain: it is the default only there.
+  // The stable specifier lives on one chain: it is the default only there.
   const specifier =
     namedSpecifier ?? (chainId === RELEASED_SPECIFIER.chainId ? RELEASED_SPECIFIER.address : "");
 
