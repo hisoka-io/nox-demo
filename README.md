@@ -30,7 +30,7 @@ Configuration (query string first, then build-time variables):
 
 | Query | Build variable | Meaning |
 | --- | --- | --- |
-| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the published worker 0.4.0, [`0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d`](https://sepolia.etherscan.io/address/0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d); the worker 0.3.0 specifier `0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB` still boots with `?specifier=`) |
+| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the stable Nox specifier [`0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A`](https://sepolia.etherscan.io/address/0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A), which its owner repoints at each worker release, 0.4.0 today; the immutable per-release specifiers boot with `?specifier=`: worker 0.4.0 `0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d`, worker 0.3.0 `0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB`) |
 | `chain` | `VITE_ANON_RPC_CHAIN_ID` | chain id of the specifier (default 11155111) |
 | `rpc` | `VITE_ANON_RPC_SPECIFIER_RPC` | RPC for the specifier read (default: the chain's public RPC) |
 | `target` | `VITE_ANON_RPC_TARGET` | chain for the wallet calls: `arbitrum-sepolia`, `ethereum`, `ethereum-sepolia` |

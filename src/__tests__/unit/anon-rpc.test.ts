@@ -86,6 +86,8 @@ describe("page defaults", () => {
   });
 
   it("defaults to the released specifier on its own chain only", () => {
+    // The stable, owner-updatable specifier: one address across worker releases.
+    expect(RELEASED_SPECIFIER).toEqual({ address: "0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A", chainId: 11155111 });
     expect(resolveDefaults({}, "")).toMatchObject({
       specifier: RELEASED_SPECIFIER.address,
       chainId: RELEASED_SPECIFIER.chainId,
