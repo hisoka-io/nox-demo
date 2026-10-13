@@ -129,7 +129,7 @@ export function BootForm({
 
         {source === "specifier" ? (
           <>
-            <Field label="Specifier address" hint="The IWorkerSpecifier contract that pins the worker's keccak-256 hash (SPEC §4).">
+            <Field label="Specifier address" hint="The IWorkerSpecifier contract that pins the worker's keccak-256 hash (SPEC §4). The default is the stable Nox specifier, which follows each worker release.">
               <input
                 data-testid="input-specifier"
                 className={inputClass}
@@ -251,7 +251,7 @@ export function BootForm({
             </button>
           )}
           <span className="text-xs text-fg-muted">
-            Harness <Mono>@anon-rpc/browser-harness {HARNESS_VERSION}</Mono>, the version the reference demo pins
+            Harness <Mono>@anon-rpc/browser-harness {HARNESS_VERSION}</Mono>, the reference anon-rpc harness
           </span>
         </div>
       </div>
