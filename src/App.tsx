@@ -16,7 +16,7 @@ import { TABS } from "@/types";
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("balance");
   const [chain, setChain] = useState<Chain>(DEFAULT_CHAIN);
-  const { status, error: connError, reconnect } = useNoxClient();
+  const { status, error: connError, reconnect, transport } = useNoxClient();
   const { theme, toggle: toggleTheme } = useTheme();
 
   const isArbSepolia = chain.id === "arbitrum-sepolia";
@@ -50,6 +50,7 @@ export default function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         connectionStatus={status}
+        transport={transport}
         theme={theme}
         onToggleTheme={toggleTheme}
         chain={chain}

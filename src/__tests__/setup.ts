@@ -12,7 +12,8 @@ export const LIVE = env.NOX_LIVE_TESTS === "1";
 let client: NoxClient | null = null;
 let connecting: Promise<NoxClient> | null = null;
 
-// Same verified configuration the app uses (src/lib/nox.ts).
+// The configuration of the app's classic fallback (src/lib/nox.ts): Node has no
+// WebRTC, so the KPS entry the browser uses first is not available here.
 export async function getTestClient(): Promise<NoxClient> {
   if (client) return client;
   if (connecting) return connecting;

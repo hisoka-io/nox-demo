@@ -15,6 +15,7 @@ import {
   type RequestTiming,
   type TransportEvent,
 } from "./lib/timeline";
+import { buildCallTrace, traceEvent, traceLogging, type CallTrace, type TraceEvent } from "./lib/trace";
 
 export type BootSource =
   | { kind: "specifier"; address: string; chainId: number; rpcUrl: string }
@@ -52,6 +53,9 @@ const LOG_ROWS = 500;
 /** `request.timing` entries and transport events kept for matching to calls. */
 const TIMINGS_KEPT = 64;
 
+/** Trace events kept for per-call traces (debug logs about ten lines per call). */
+const TRACE_EVENTS_KEPT = 1_000;
+
 class PageBootError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {
@@ -78,6 +82,8 @@ export function useAnonRpcWorker() {
   const logIdRef = useRef(0);
   const timingsRef = useRef<RequestTiming[]>([]);
   const transportEventsRef = useRef<TransportEvent[]>([]);
+  const traceEventsRef = useRef<TraceEvent[]>([]);
+  const [traceEnabled, setTraceEnabled] = useState(false);
 
   /**
    * The last request timing the worker logged at or after `since` and no
@@ -101,6 +107,23 @@ export function useAnonRpcWorker() {
         rpcUrl,
         transportEventsRef.current.filter((event) => event.at >= since && event.at <= until),
       ),
+    [boot.tls],
+  );
+  /**
+   * Where a call that ran from `since` to `until` spent its time, from the
+   * worker's log lines (see lib/trace). Detailed only when the worker logs at
+   * debug (`traceEnabled`).
+   */
+  const traceBetween = useCallback(
+    (since: number, until: number, endedAt: number, rpcUrl: string): CallTrace => {
+      const events = traceEventsRef.current.filter((event) => event.at >= since && event.at <= until);
+      const transport = callTransport(
+        boot.tls,
+        rpcUrl,
+        transportEventsRef.current.filter((event) => event.at >= since && event.at <= until),
+      );
+      return buildCallTrace(events, { startedAt: since, endedAt, transport });
+    },
     [boot.tls],
   );
   const pushLog = useCallback((source: LogLine["source"], level: LogLevel, text: string) => {
@@ -137,6 +160,8 @@ export function useAnonRpcWorker() {
       setLogs([]);
       timingsRef.current = [];
       transportEventsRef.current = [];
+      traceEventsRef.current = [];
+      setTraceEnabled(traceLogging(request.config));
       const now = () => performance.now();
 
       try {
@@ -245,6 +270,12 @@ export function useAnonRpcWorker() {
             if (moved !== null) {
               transportEventsRef.current = [...transportEventsRef.current.slice(-(TIMINGS_KEPT - 1)), moved];
             }
+            const traced = traceEvent(log, at);
+            if (traced !== null) {
+              const kept = traceEventsRef.current;
+              if (kept.length >= TRACE_EVENTS_KEPT) kept.splice(0, kept.length - TRACE_EVENTS_KEPT + 1);
+              kept.push(traced);
+            }
             dispatch({ type: "log", at, log });
             pushLog("worker", log.level, log.text);
           }
@@ -273,5 +304,5 @@ export function useAnonRpcWorker() {
 
   const effectivePhase: Phase = phase === "ready" && boot.failure !== null ? "failed" : phase;
 
-  return { phase: effectivePhase, boot, info, logs, worker, start, stop, pushLog, timingBetween, transportBetween };
+  return { phase: effectivePhase, boot, info, logs, worker, start, stop, pushLog, timingBetween, transportBetween, traceBetween, traceEnabled };
 }
