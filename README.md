@@ -11,7 +11,7 @@ Your queries route through 3 encrypted hops, so no RPC provider sees your IP.
 - Live view of the network's entry, mix and exit nodes (packet paths in the animation are illustrative)
 - Multichain: Arbitrum Sepolia, Ethereum, Arbitrum, Base, Optimism. RPC mode reads Arbitrum Sepolia, the exit nodes' default chain; other chains use Explorer mode (Blockscout).
 
-The exit node fetches the data; it never sees who asked. Fonts are bundled, and the page makes no direct requests to data providers. It does talk to the Nox seed (`api.hisoka.io`), one Nox entry node, and the public Arbitrum Sepolia RPC, which the SDK uses to check the topology against the on-chain registry.
+The exit node fetches the data; it never sees who asked. Fonts are bundled, and the page makes no direct requests to data providers. The Explorer dials a Nox entry node over KPS (WebRTC with a pinned certificate hash), trusting the registry snapshot pinned in the page (copied from `@hisoka-io/anon-rpc-worker`), and re-checks the registry through the mixnet. Browsers without WebRTC, or a superseded pinned node set, use the HTTPS entry instead, which checks the topology from the Nox seed (`api.hisoka.io`) against the registry over the public Arbitrum Sepolia RPC. The header shows the entry transport in use. The node count in the header comes from the seed's liveness list.
 
 ## Anon RPC page (`/anon-rpc`)
 
@@ -24,7 +24,7 @@ The exit node fetches the data; it never sees who asked. Fonts are bundled, and 
 
 With worker 0.4.0 the calls use end-to-end TLS: the worker runs TLS itself and the exit relays encrypted records, so the request is readable by the RPC provider alone. The page shows the worker's TLS setting (from its `boot.tls` log) and, per call, `end-to-end TLS` or `exit HTTP request`.
 
-The page shows a live boot timeline, the active entry (KPS address and certhash), the bundle hash and specifier with explorer links, the worker's log, and the worker's structured error codes. A developer option boots a local bundle file under the same keccak check.
+The page shows a live boot timeline, the active entry (KPS address and certhash), the bundle hash and specifier with explorer links, the worker's log, and the worker's structured error codes. A developer option boots a local bundle file under the same keccak check. The per-call trace option boots the worker with `logLevel: "debug"` and shows, for each call, whether it used a spare TLS session, opened one inline or retried, with the time spent opening, exchanging and in the page, plus p50/p95 over the calls run.
 
 Configuration (query string first, then build-time variables):
 

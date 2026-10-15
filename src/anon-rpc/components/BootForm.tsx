@@ -11,6 +11,7 @@ import {
 } from "../lib/config";
 import { bundleHash, formatBytes } from "../lib/bundle";
 import { inputClass } from "../lib/format";
+import { withTraceLogging } from "../lib/trace";
 import type { BootRequest, Phase } from "../useAnonRpcWorker";
 import { Field, Mono, Panel } from "./ui";
 
@@ -40,6 +41,7 @@ export function BootForm({
   const [chainId, setChainId] = useState(defaults.chainId);
   const [rpcUrl, setRpcUrl] = useState(defaults.specifierRpc);
   const [configText, setConfigText] = useState("");
+  const [trace, setTrace] = useState(false);
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,6 +75,7 @@ export function BootForm({
     let config: unknown;
     try {
       config = parseConfigText(configText);
+      if (trace) config = withTraceLogging(config);
     } catch (e) {
       setError(`Worker config must be JSON: ${(e as Error).message}`);
       return;
@@ -221,6 +224,21 @@ export function BootForm({
             </Field>
           </div>
         </details>
+
+        <label className="flex items-start gap-2 text-xs text-fg-secondary">
+          <input
+            type="checkbox"
+            data-testid="input-trace"
+            checked={trace}
+            onChange={(e) => setTrace(e.target.checked)}
+            disabled={running}
+            className="mt-0.5 accent-[var(--color-accent)]"
+          />
+          <span>
+            Per-call trace: boot the worker with <Mono>{'"logLevel":"debug"'}</Mono> and show where each call's time went
+            (TLS session open, exchange, retries, page overhead). The worker logs no URLs, headers or bodies at any level.
+          </span>
+        </label>
 
         {error && (
           <p className="text-sm text-error" role="alert" data-testid="boot-form-error">

@@ -24,7 +24,7 @@ const PHASE_BADGE: Record<Phase, { tone: "neutral" | "pending" | "success" | "er
 export default function AnonRpcPage() {
   const { theme, toggle } = useTheme();
   const defaults = useMemo(() => resolveDefaults(import.meta.env, window.location.search), []);
-  const { phase, boot, info, logs, worker, start, stop, timingBetween, transportBetween } = useAnonRpcWorker();
+  const { phase, boot, info, logs, worker, start, stop, timingBetween, transportBetween, traceBetween, traceEnabled } = useAnonRpcWorker();
   const [config, setConfig] = useState<unknown>(undefined);
   const extraEntries = useMemo(() => configEntries(config), [config]);
   const badge = PHASE_BADGE[phase];
@@ -106,7 +106,14 @@ export default function AnonRpcPage() {
           </div>
         </div>
 
-        <CallsPanel workerFetch={worker ? worker.fetch : null} ready={phase === "ready"} timingBetween={timingBetween} transportBetween={transportBetween} />
+        <CallsPanel
+          workerFetch={worker ? worker.fetch : null}
+          ready={phase === "ready"}
+          timingBetween={timingBetween}
+          transportBetween={transportBetween}
+          traceBetween={traceBetween}
+          traceEnabled={traceEnabled}
+        />
         <LogDrawer logs={logs} t0={boot.t0} />
       </main>
 

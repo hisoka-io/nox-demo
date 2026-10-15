@@ -5,6 +5,7 @@ import { isAddress, isHttpUrl, TARGET_PRESETS, targetPresetById, explorerAddress
 import { describeError, type ErrorView } from "../lib/errors";
 import { formatMs, inputClass } from "../lib/format";
 import type { CallTransport, RequestTiming } from "../lib/timeline";
+import { summarizeTraces, type CallTrace, type SegmentKind, type TracePath } from "../lib/trace";
 import { hostOf } from "../lib/specifier";
 import { Badge, ExtLink, Field, Mono, Panel } from "./ui";
 
@@ -19,6 +20,103 @@ const TIMING_LOG_SLACK_MS = 500;
 
 export type TimingLookup = (since: number, until: number) => RequestTiming | null;
 export type TransportLookup = (since: number, until: number, rpcUrl: string) => CallTransport | null;
+export type TraceLookup = (since: number, until: number, endedAt: number, rpcUrl: string) => CallTrace;
+
+/** Calls kept for the trace summary (newest last). */
+const TRACE_HISTORY = 50;
+
+interface CallRecord {
+  startedAt: number;
+  endedAt: number;
+  rpcUrl: string;
+}
+
+const SEGMENT_STYLE: Record<SegmentKind, { label: string; color: string }> = {
+  open: { label: "TLS open", color: "var(--color-warning)" },
+  lost: { label: "lost attempt", color: "var(--color-error)" },
+  exchange: { label: "exchange", color: "var(--color-olive)" },
+  upload: { label: "upload", color: "var(--color-node-entry)" },
+  wait: { label: "wait", color: "var(--color-node-mix)" },
+  claim: { label: "claim", color: "var(--color-node-exit)" },
+  download: { label: "download", color: "var(--color-packet-return)" },
+  decode: { label: "decode", color: "var(--color-accent-light)" },
+  worker: { label: "worker", color: "var(--color-fg-muted)" },
+  page: { label: "page", color: "var(--color-fg-faint)" },
+};
+
+const PATH_TEXT: Record<TracePath, string> = {
+  spare: "spare session",
+  inline: "opened inline",
+  waited: "waited for an open",
+  retry: "retried",
+  "exit-http": "exit HTTP",
+  local: "local answer",
+};
+
+function tracePathText(path: TracePath | null): string {
+  return path === null ? "path unknown" : PATH_TEXT[path];
+}
+
+/** One call's time as a stacked bar: TLS open, lost attempt, exchange (or HTTP phases), worker, page. */
+function TraceBar({ trace, testId }: { trace: CallTrace; testId: string }) {
+  if (trace.segments.length === 0) {
+    return (
+      <span className="text-[11px] text-fg-muted" data-testid={testId} data-state="none">
+        trace: no call.done line yet
+      </span>
+    );
+  }
+  const total = trace.segments.reduce((sum, s) => sum + s.ms, 0) || 1;
+  return (
+    <div className="flex flex-col gap-1" data-testid={testId} data-state="shown" data-path={trace.path ?? "unknown"}>
+      <div className="flex h-2 w-full overflow-hidden bg-bg-secondary" role="img" aria-label={`${tracePathText(trace.path)}, ${trace.totalMs} ms`}>
+        {trace.segments.map((s, i) => (
+          <span
+            key={`${s.kind}-${i}`}
+            data-segment={s.kind}
+            title={`${SEGMENT_STYLE[s.kind].label} ${formatMs(s.ms)}`}
+            style={{ width: `${(s.ms / total) * 100}%`, background: SEGMENT_STYLE[s.kind].color }}
+          />
+        ))}
+      </div>
+      <span className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[11px] text-fg-muted">
+        <span className="text-fg-secondary">{tracePathText(trace.path)}</span>
+        {trace.segments.map((s, i) => (
+          <span key={`${s.kind}-${i}`}>
+            <span className="inline-block w-1.5 h-1.5 mr-1 align-middle" style={{ background: SEGMENT_STYLE[s.kind].color }} />
+            {SEGMENT_STYLE[s.kind].label} <span className="text-fg-secondary">{formatMs(s.ms)}</span>
+          </span>
+        ))}
+        {trace.spareAgeMs !== null && <span>spare age {formatMs(trace.spareAgeMs)}</span>}
+        {trace.rejects.length > 0 && <span>rejected: {trace.rejects.join(", ")}</span>}
+      </span>
+    </div>
+  );
+}
+
+/** p50/p95 over the traced calls, with the path mix and each part's median. */
+function TraceSummaryLine({ traces }: { traces: readonly CallTrace[] }) {
+  const summary = summarizeTraces(traces);
+  if (summary.calls === 0) return null;
+  const paths = (Object.entries(summary.paths) as [TracePath, number][]).map(([path, n]) => `${PATH_TEXT[path]} ${n}`);
+  const parts = (Object.keys(SEGMENT_STYLE) as SegmentKind[]).filter((kind) => summary.segmentP50[kind] !== undefined);
+  return (
+    <div className="flex flex-col gap-1 border border-fg-faint px-3 py-2 text-xs" data-testid="trace-summary">
+      <span className="font-mono text-fg-secondary">
+        {summary.calls} traced call{summary.calls === 1 ? "" : "s"}: p50{" "}
+        <span data-testid="trace-p50">{formatMs(summary.p50Ms)}</span>, p95 <span data-testid="trace-p95">{formatMs(summary.p95Ms)}</span>, max{" "}
+        {formatMs(summary.maxMs)}
+        {summary.retries > 0 ? `, ${summary.retries} retr${summary.retries === 1 ? "y" : "ies"}` : ""}
+      </span>
+      {paths.length > 0 && <span className="text-fg-muted">{paths.join(" · ")}</span>}
+      {parts.length > 0 && (
+        <span className="text-fg-muted font-mono">
+          median {parts.map((kind) => `${SEGMENT_STYLE[kind].label} ${formatMs(summary.segmentP50[kind]!)}`).join(" · ")}
+        </span>
+      )}
+    </div>
+  );
+}
 
 const TRANSPORT_TEXT: Record<CallTransport, string> = {
   "tls-tunnel": "end-to-end TLS: exits relay encrypted records only",
@@ -96,6 +194,7 @@ function PathCell({
   testId,
   timing,
   transport,
+  trace,
 }: {
   label: string;
   icon: ReactNode;
@@ -103,6 +202,7 @@ function PathCell({
   testId: string;
   timing?: RequestTiming | null;
   transport?: CallTransport | null;
+  trace?: CallTrace | null;
 }) {
   return (
     <div className="flex flex-col gap-1 min-w-0" data-testid={testId} data-state={path.state}>
@@ -124,6 +224,7 @@ function PathCell({
       {path.state === "ok" && timing !== undefined && (transport == null || transport === "exit-http") && (
         <PhaseTimings timing={timing} testId={`${testId}-phases`} />
       )}
+      {path.state === "ok" && trace != null && <TraceBar trace={trace} testId={`${testId}-trace`} />}
       {path.state === "error" && (
         <span className="text-xs text-error break-words">
           {path.error.code && (
@@ -144,11 +245,16 @@ export function CallsPanel({
   ready,
   timingBetween,
   transportBetween,
+  traceBetween,
+  traceEnabled = false,
 }: {
   workerFetch: FetchLike | null;
   ready: boolean;
   timingBetween?: TimingLookup;
   transportBetween?: TransportLookup;
+  traceBetween?: TraceLookup;
+  /** The worker logs at debug, so traces carry the path and its parts. */
+  traceEnabled?: boolean;
 }) {
   const [presetId, setPresetId] = useState(TARGET_PRESETS[0].id);
   const preset = targetPresetById(presetId) ?? TARGET_PRESETS[0];
@@ -161,6 +267,11 @@ export function CallsPanel({
     Object.fromEntries(CALLS.map((c) => [c.id, IDLE_ROW])) as Record<CallId, Row>,
   );
   const [inputError, setInputError] = useState<string | null>(null);
+  const [history, setHistory] = useState<CallRecord[]>([]);
+  const traceOf = (record: CallRecord): CallTrace | null =>
+    traceEnabled && traceBetween
+      ? traceBetween(record.startedAt, record.endedAt + TIMING_LOG_SLACK_MS, record.endedAt, record.rpcUrl)
+      : null;
 
   const choosePreset = (id: string) => {
     const next = targetPresetById(id);
@@ -208,7 +319,11 @@ export function CallsPanel({
       }));
       const startedAt = performance.now();
       const anon = runCall(workerFetch, url, id, callInputs).then(
-        (result) => setPath(id, "anon", { state: "ok", result, startedAt, endedAt: performance.now(), rpcUrl: url }),
+        (result) => {
+          const endedAt = performance.now();
+          setPath(id, "anon", { state: "ok", result, startedAt, endedAt, rpcUrl: url });
+          setHistory((prev) => [...prev.slice(-(TRACE_HISTORY - 1)), { startedAt, endedAt, rpcUrl: url }]);
+        },
         (error: unknown) => setPath(id, "anon", { state: "error", error: describeError(error) }),
       );
       const direct = compare
@@ -327,6 +442,9 @@ export function CallsPanel({
           </p>
         )}
         {!ready && <p className="text-xs text-fg-muted">Boot the worker to run calls through the mixnet.</p>}
+        {traceEnabled && traceBetween && (
+          <TraceSummaryLine traces={history.map(traceOf).filter((t): t is CallTrace => t !== null)} />
+        )}
 
         <ul className="flex flex-col gap-3">
           {CALLS.map((call) => {
@@ -377,6 +495,11 @@ export function CallsPanel({
                       row.anon.rpcUrl !== undefined
                         ? transportBetween(row.anon.startedAt, row.anon.endedAt + TIMING_LOG_SLACK_MS, row.anon.rpcUrl)
                         : undefined
+                    }
+                    trace={
+                      row.anon.state === "ok" && row.anon.startedAt !== undefined && row.anon.endedAt !== undefined && row.anon.rpcUrl !== undefined
+                        ? traceOf({ startedAt: row.anon.startedAt, endedAt: row.anon.endedAt, rpcUrl: row.anon.rpcUrl })
+                        : null
                     }
                   />
                   <PathCell
