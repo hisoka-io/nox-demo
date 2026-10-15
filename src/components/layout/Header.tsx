@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { type Tab, TABS } from "@/types";
 import type { ConnectionStatus } from "@/hooks/useNoxClient";
+import type { TransportInfo } from "@/lib/nox";
 import { useTopology } from "@/hooks/useTopology";
 import { usePacketTracker } from "@/hooks/usePacketTracker";
 import { CHAINS } from "@/lib/blockscout";
@@ -13,13 +14,14 @@ interface HeaderProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   connectionStatus: ConnectionStatus;
+  transport: TransportInfo | null;
   theme: Theme;
   onToggleTheme: () => void;
   chain: Chain;
   onChainChange: (chain: Chain) => void;
 }
 
-export function Header({ activeTab, onTabChange, connectionStatus, theme, onToggleTheme, chain, onChainChange }: HeaderProps) {
+export function Header({ activeTab, onTabChange, connectionStatus, transport, theme, onToggleTheme, chain, onChainChange }: HeaderProps) {
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -45,6 +47,7 @@ export function Header({ activeTab, onTabChange, connectionStatus, theme, onTogg
       <div className="flex items-center gap-3">
         <span className="font-serif text-2xl tracking-normal">Nox Explorer</span>
         <StatusDot status={connectionStatus} />
+        {connectionStatus === "connected" && transport && <TransportBadge transport={transport} />}
       </div>
 
       <nav className="flex items-center gap-0.5 sm:gap-1">
@@ -120,6 +123,7 @@ export function Header({ activeTab, onTabChange, connectionStatus, theme, onTogg
             <StatRow label="Online Nodes" value={String(nodeCount)} />
             <StatRow label="Registered Nodes" value={String(registeredCount)} />
             <StatRow label="Encrypted Hops" value="3" />
+            {transport && <StatRow label="Entry Transport" value={TRANSPORT_LABEL[transport.kind]} />}
             <StatRow label="Packets Sent" value={String(totalSent)} />
             <StatRow label="Responses" value={String(totalReceived)} />
           </div>
@@ -164,6 +168,31 @@ function StatusDot({ status }: { status: ConnectionStatus }) {
         {labels[status]}
       </span>
     </div>
+  );
+}
+
+const TRANSPORT_LABEL: Record<TransportInfo["kind"], string> = {
+  kps: "KPS (WebRTC)",
+  classic: "HTTPS",
+};
+
+/** Which entry transport the client connected with; classic carries the reason KPS was not used. */
+function TransportBadge({ transport }: { transport: TransportInfo }) {
+  const title =
+    transport.kind === "kps"
+      ? "Packets reach the entry over a KPS (WebRTC) connection to a pinned node"
+      : `Packets reach the entry over HTTPS. KPS unavailable: ${transport.fallbackReason ?? "unknown"}`;
+  return (
+    <span
+      data-testid="nox-transport"
+      data-transport={transport.kind}
+      title={title}
+      className={`hidden sm:inline px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider border ${
+        transport.kind === "kps" ? "border-[var(--color-olive)]/40 text-[var(--color-olive)]" : "border-warning/40 text-warning"
+      }`}
+    >
+      {TRANSPORT_LABEL[transport.kind]}
+    </span>
   );
 }
 

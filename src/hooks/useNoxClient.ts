@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getClient, disconnectClient, isConnected } from "@/lib/nox";
+import { getClient, disconnectClient, getTransport, isConnected, type TransportInfo } from "@/lib/nox";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
@@ -8,6 +8,7 @@ export function useNoxClient() {
     isConnected() ? "connected" : "connecting",
   );
   const [error, setError] = useState<string | null>(null);
+  const [transport, setTransport] = useState<TransportInfo | null>(() => getTransport());
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -17,7 +18,10 @@ export function useNoxClient() {
     if (!isConnected()) {
       getClient()
         .then(() => {
-          if (!cancelled && mounted.current) setStatus("connected");
+          if (!cancelled && mounted.current) {
+            setStatus("connected");
+            setTransport(getTransport());
+          }
         })
         .catch((err) => {
           if (!cancelled && mounted.current) {
@@ -36,10 +40,14 @@ export function useNoxClient() {
   const reconnect = useCallback(() => {
     disconnectClient();
     setStatus("connecting");
+    setTransport(null);
     setError(null);
     getClient()
       .then(() => {
-        if (mounted.current) setStatus("connected");
+        if (mounted.current) {
+          setStatus("connected");
+          setTransport(getTransport());
+        }
       })
       .catch((err) => {
         if (mounted.current) {
@@ -49,5 +57,5 @@ export function useNoxClient() {
       });
   }, []);
 
-  return { status, error, reconnect };
+  return { status, error, reconnect, transport };
 }
