@@ -267,7 +267,9 @@ export function CallsPanel({
     Object.fromEntries(CALLS.map((c) => [c.id, IDLE_ROW])) as Record<CallId, Row>,
   );
   const [inputError, setInputError] = useState<string | null>(null);
-  const [history, setHistory] = useState<CallRecord[]>([]);
+  // Calls of the current worker only: a new boot starts a new summary.
+  const [history, setHistory] = useState<{ worker: FetchLike | null; calls: CallRecord[] }>({ worker: null, calls: [] });
+  const calls = history.worker === workerFetch ? history.calls : [];
   const traceOf = (record: CallRecord): CallTrace | null =>
     traceEnabled && traceBetween
       ? traceBetween(record.startedAt, record.endedAt + TIMING_LOG_SLACK_MS, record.endedAt, record.rpcUrl)
@@ -322,7 +324,10 @@ export function CallsPanel({
         (result) => {
           const endedAt = performance.now();
           setPath(id, "anon", { state: "ok", result, startedAt, endedAt, rpcUrl: url });
-          setHistory((prev) => [...prev.slice(-(TRACE_HISTORY - 1)), { startedAt, endedAt, rpcUrl: url }]);
+          setHistory((prev) => ({
+            worker: workerFetch,
+            calls: [...(prev.worker === workerFetch ? prev.calls.slice(-(TRACE_HISTORY - 1)) : []), { startedAt, endedAt, rpcUrl: url }],
+          }));
         },
         (error: unknown) => setPath(id, "anon", { state: "error", error: describeError(error) }),
       );
@@ -443,7 +448,7 @@ export function CallsPanel({
         )}
         {!ready && <p className="text-xs text-fg-muted">Boot the worker to run calls through the mixnet.</p>}
         {traceEnabled && traceBetween && (
-          <TraceSummaryLine traces={history.map(traceOf).filter((t): t is CallTrace => t !== null)} />
+          <TraceSummaryLine traces={calls.map(traceOf).filter((t): t is CallTrace => t !== null)} />
         )}
 
         <ul className="flex flex-col gap-3">
