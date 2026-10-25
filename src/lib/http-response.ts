@@ -67,11 +67,22 @@ export function decodeHttpResponse(data: Uint8Array): HttpResponse {
   return { status, headers, body, truncated };
 }
 
+/** A reply that arrived with a non-2xx status; `status` lets callers treat a 404 as "not found". */
+export class HttpStatusError extends Error {
+  readonly status: number;
+
+  constructor(status: number, bodyText: string) {
+    super(`HTTP ${status}: ${bodyText.slice(0, 200)}`);
+    this.name = "HttpStatusError";
+    this.status = status;
+  }
+}
+
 export function decodeHttpResponseJson<T>(data: Uint8Array): T {
   const resp = decodeHttpResponse(data);
   if (resp.status < 200 || resp.status >= 300) {
     const bodyText = new TextDecoder().decode(resp.body);
-    throw new Error(`HTTP ${resp.status}: ${bodyText.slice(0, 200)}`);
+    throw new HttpStatusError(resp.status, bodyText);
   }
   if (resp.truncated) {
     throw new Error(

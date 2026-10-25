@@ -117,6 +117,23 @@ describe("Explorer client transport", () => {
     expect(late.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it("bounds the classic boot too, rejects past the deadline and disconnects a late classic client", async () => {
+    vi.useFakeTimers();
+    delete (globalThis as { RTCPeerConnection?: unknown }).RTCPeerConnection;
+    let lateResolve: ((c: FakeClient) => void) | undefined;
+    const late = fake("classic");
+    connect.mockImplementation(() => new Promise<FakeClient>((resolve) => (lateResolve = resolve)));
+    const nox = await freshNox();
+    const pending = nox.getClient();
+    const outcome = expect(pending).rejects.toThrow(`${nox.CLASSIC_CONNECT_DEADLINE_MS} ms`);
+    await vi.advanceTimersByTimeAsync(nox.CLASSIC_CONNECT_DEADLINE_MS);
+    await outcome;
+    expect(nox.isConnected()).toBe(false);
+    lateResolve!(late);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(late.disconnect).toHaveBeenCalledTimes(1);
+  });
+
   it("shares one connection between concurrent callers and clears the transport on disconnect", async () => {
     connect.mockImplementation(async (config) => fake(config.mode ?? "classic"));
     const nox = await freshNox();

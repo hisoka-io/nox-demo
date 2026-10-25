@@ -3,7 +3,8 @@
 //   node scripts/smoke.mjs [url]        (default http://localhost:4173, or $SMOKE_URL)
 //
 // It connects to the live Nox testnet and runs the built-in examples on the Balance,
-// Transaction and Contract tabs. It also fails if the page contacts a host outside
+// Transaction and Contract tabs (including a Sourcify ABI fetch), then reads a
+// balance on Ethereum through the exit's RPC for that chain. It also fails if the page contacts a host outside
 // the allowlist below, so a new direct third-party request is caught before it ships.
 import { chromium } from "playwright";
 
@@ -11,6 +12,8 @@ const target = new URL(process.argv[2] || process.env.SMOKE_URL || "http://local
 const CONNECT_TIMEOUT = 90_000;
 const QUERY_TIMEOUT = 75_000;
 const ATTEMPTS = 2;
+// An Ethereum mainnet transaction (Vitalik's address, 2026-10-24) for the cross-chain lookup.
+const ETH_TX = "0x4b94b294289d75d0dc6c1282190bcec6a9ce49377e12b8fc3ab34247e5309eb7";
 
 // Hosts the page may contact on its own: itself, the Nox seed and ingress nodes,
 // and the public Arb Sepolia RPC the SDK uses to verify the topology on-chain.
@@ -101,6 +104,34 @@ if (failures.length === 0) {
     await page.locator("main select").selectOption("relayerCount");
     await page.getByRole("button", { name: "Call", exact: true }).click();
     await page.getByText("relayerCount() result").waitFor({ timeout: QUERY_TIMEOUT });
+  });
+
+  await step("contract read with a Sourcify ABI", async () => {
+    await tab("Contract");
+    await page.getByRole("button", { name: "Multicall3", exact: true }).first().click();
+    await page.getByText("ABI loaded from Sourcify").waitFor({ timeout: QUERY_TIMEOUT });
+    await page.locator("main select").selectOption("getChainId");
+    await page.getByRole("button", { name: "Call", exact: true }).click();
+    await page.getByText("getChainId() result").waitFor({ timeout: QUERY_TIMEOUT });
+    const text = await page.locator("main").innerText();
+    if (!text.includes("421614")) throw new Error("getChainId() did not return 421614");
+  });
+
+  await step("balance lookup on Ethereum", async () => {
+    await page.locator("header select").selectOption("ethereum");
+    await tab("Balance");
+    await example("vitalik.eth", "Routed privately in");
+    await page.getByText("Transactions sent").first().waitFor({ timeout: QUERY_TIMEOUT });
+  });
+
+  await step("transaction lookup on Ethereum", async () => {
+    await tab("Transaction");
+    const input = page.locator("main input").first();
+    await input.fill(ETH_TX);
+    await input.press("Enter");
+    await page.getByText("Routed privately in").first().waitFor({ timeout: QUERY_TIMEOUT });
+    const errors = await page.locator("main .border-error\\/30").count();
+    if (errors > 0) throw new Error("error panel shown");
   });
 }
 

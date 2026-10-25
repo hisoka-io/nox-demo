@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decodeHttpResponse, decodeHttpResponseJson } from "@/lib/http-response";
+import { HttpStatusError, decodeHttpResponse, decodeHttpResponseJson } from "@/lib/http-response";
 
 // Mirrors bincode's encoding of the exit node's SerializableHttpResponse.
 function encode(status: number, headers: [string, string][], body: Uint8Array, truncated: boolean): Uint8Array {
@@ -39,6 +39,12 @@ describe("decodeHttpResponse", () => {
   it("surfaces HTTP errors with the body", () => {
     const raw = encode(404, [], new TextEncoder().encode("Not found"), false);
     expect(() => decodeHttpResponseJson(raw)).toThrow(/HTTP 404: Not found/);
+    try {
+      decodeHttpResponseJson(raw);
+    } catch (err) {
+      expect(err).toBeInstanceOf(HttpStatusError);
+      expect((err as HttpStatusError).status).toBe(404);
+    }
   });
 
   it("rejects short or malformed input", () => {

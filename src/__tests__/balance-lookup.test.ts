@@ -1,125 +1,72 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import { getTestClient, LIVE } from "./setup";
-import { decodeHttpResponseJson } from "@/lib/http-response";
-import {
-  CHAINS, RESPONSE_BUDGET, buildUrl,
-  parseAddressInfo, parseTokenBalances, parseTransactions, parseTokenTransfers,
-} from "@/lib/blockscout";
+import { CHAINS, MULTICALL3, MULTICALL3_ABI, parseTokenBalances, rpcOptions, tokenBalancesCall } from "@/lib/chains";
 import { GOV_SAFE } from "@/lib/network";
 import { formatTokenBalance } from "@/lib/format";
-import type { Chain } from "@/lib/blockscout";
+import type { Chain } from "@/lib/chains";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
 const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
-function addressForChain(chain: Chain): string {
-  return chain.id === "arbitrum-sepolia" ? GOV_SAFE : VITALIK;
+function addressForChain(chain: Chain): Hex {
+  return chain.id === "arbitrum-sepolia" ? (GOV_SAFE as Hex) : VITALIK;
 }
 
-describe.skipIf(!LIVE)("Balance Lookup via Mixnet", () => {
+const META_ABI = [
+  { name: "symbol", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { name: "decimals", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+] as const;
+
+describe.skipIf(!LIVE)("Balance lookup via the mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {
     client = await getTestClient();
   });
 
-  describe("RPC Mode (Arb Sepolia default)", () => {
-    it("eth_getBalance returns a hex balance for the Gov Safe", async () => {
-      const result = await client.rpcCall("eth_getBalance", [GOV_SAFE, "latest"]);
-      expect(result).toBeDefined();
-      expect(typeof result).toBe("string");
-      expect((result as string).startsWith("0x")).toBe(true);
-      expect(BigInt(result as string)).toBeGreaterThanOrEqual(0n);
-    });
-
-    it("eth_getBalance formats correctly", async () => {
-      const result = await client.rpcCall("eth_getBalance", [VITALIK, "latest"]);
-      const balance = BigInt(result as string);
-      const formatted = formatTokenBalance(balance, 18);
-      expect(parseFloat(formatted)).toBeGreaterThanOrEqual(0);
-    });
-  });
-
   for (const chain of CHAINS) {
-    describe(`Explorer API - ${chain.name} (${chain.id})`, () => {
+    describe(`${chain.name} (${chain.id})`, () => {
       const addr = addressForChain(chain);
 
-      it("fetches address info", async () => {
-        const url = buildUrl(chain, `/addresses/${addr}`);
-        const raw = await client.httpRequest(
-          "GET", url,
-          [["Accept", "application/json"]],
-          new Uint8Array(0),
-          { expectedResponseBytes: RESPONSE_BUDGET.addressInfo },
-        );
-
-        const data = decodeHttpResponseJson<Record<string, unknown>>(raw);
-        const info = parseAddressInfo(data);
-
-        expect(info.address.toLowerCase()).toBe(addr.toLowerCase());
-        expect(info.coinBalance).toBeDefined();
-        expect(BigInt(info.coinBalance)).toBeGreaterThanOrEqual(0n);
+      it("is the chain it claims to be", async () => {
+        const id = await client.rpcCall("eth_chainId", [], rpcOptions(chain));
+        expect(Number(BigInt(id as string))).toBe(chain.chainId);
       });
 
-      it("fetches token balances", async () => {
-        const url = buildUrl(chain, `/addresses/${addr}/tokens?type=ERC-20`);
-        const raw = await client.httpRequest(
-          "GET", url,
-          [["Accept", "application/json"]],
-          new Uint8Array(0),
-          { expectedResponseBytes: RESPONSE_BUDGET.tokens },
-        );
+      it("reads the native balance and the account nonce", async () => {
+        const [balance, nonce] = await Promise.all([
+          client.rpcCall("eth_getBalance", [addr, "latest"], rpcOptions(chain)),
+          client.rpcCall("eth_getTransactionCount", [addr, "latest"], rpcOptions(chain)),
+        ]);
+        expect(BigInt(balance as string)).toBeGreaterThanOrEqual(0n);
+        expect(parseFloat(formatTokenBalance(BigInt(balance as string), chain.decimals))).toBeGreaterThanOrEqual(0);
+        expect(BigInt(nonce as string)).toBeGreaterThanOrEqual(0n);
+      });
 
-        const data = decodeHttpResponseJson<unknown>(raw);
-        const tokens = parseTokenBalances(data as Record<string, unknown>);
-        expect(Array.isArray(tokens)).toBe(true);
-
-        for (const token of tokens) {
-          expect(token.symbol).toBeDefined();
-          expect(token.decimals).toBeGreaterThanOrEqual(0);
-          expect(BigInt(token.balance)).toBeGreaterThanOrEqual(0n);
+      it("reads every listed token balance in one Multicall3 call", async () => {
+        const raw = await client.rpcCall("eth_call", tokenBalancesCall(chain.tokens, addr), rpcOptions(chain));
+        const balances = parseTokenBalances(chain.tokens, raw as Hex);
+        expect(balances).toHaveLength(chain.tokens.length);
+        for (const b of balances) {
+          expect(b.balance).not.toBeNull();
+          expect(b.balance! >= 0n).toBe(true);
         }
       });
 
-      it("fetches transactions", async () => {
-        const url = buildUrl(chain, `/addresses/${addr}/transactions`);
-        const raw = await client.httpRequest(
-          "GET", url,
-          [["Accept", "application/json"]],
-          new Uint8Array(0),
-          { expectedResponseBytes: RESPONSE_BUDGET.transactions, timeoutMs: 60_000 },
-        );
-
-        const data = decodeHttpResponseJson<Record<string, unknown>>(raw);
-        const txs = parseTransactions(data);
-        expect(Array.isArray(txs)).toBe(true);
-
-        if (txs.length > 0) {
-          const tx = txs[0];
-          expect(tx.hash.startsWith("0x")).toBe(true);
-          expect(tx.from.startsWith("0x")).toBe(true);
-          expect(tx.status).toBeDefined();
-        }
-      });
-
-      it("fetches token transfers", async () => {
-        const url = buildUrl(chain, `/addresses/${addr}/token-transfers`);
-        const raw = await client.httpRequest(
-          "GET", url,
-          [["Accept", "application/json"]],
-          new Uint8Array(0),
-          { expectedResponseBytes: 50_000, timeoutMs: 60_000 },
-        );
-
-        const data = decodeHttpResponseJson<Record<string, unknown>>(raw);
-        const transfers = parseTokenTransfers(data);
-        expect(Array.isArray(transfers)).toBe(true);
-
-        for (const t of transfers) {
-          expect(t.txHash.startsWith("0x")).toBe(true);
-          expect(t.from.startsWith("0x")).toBe(true);
-          expect(t.to.startsWith("0x")).toBe(true);
-          expect(t.symbol).toBeDefined();
-        }
+      it("lists each token with its on-chain symbol and decimals", async () => {
+        const calls = chain.tokens.flatMap((t) => [
+          { target: t.address, allowFailure: false, callData: encodeFunctionData({ abi: META_ABI, functionName: "symbol" }) },
+          { target: t.address, allowFailure: false, callData: encodeFunctionData({ abi: META_ABI, functionName: "decimals" }) },
+        ]);
+        const data = encodeFunctionData({ abi: MULTICALL3_ABI, functionName: "aggregate3", args: [calls] });
+        const raw = await client.rpcCall("eth_call", [{ to: MULTICALL3, data }, "latest"], rpcOptions(chain));
+        const results = decodeFunctionResult({ abi: MULTICALL3_ABI, functionName: "aggregate3", data: raw as Hex });
+        chain.tokens.forEach((t, i) => {
+          const symbol = decodeFunctionResult({ abi: META_ABI, functionName: "symbol", data: results[2 * i].returnData });
+          const decimals = decodeFunctionResult({ abi: META_ABI, functionName: "decimals", data: results[2 * i + 1].returnData });
+          expect(decimals, `${t.symbol} decimals`).toBe(t.decimals);
+          expect(symbol.toUpperCase(), `${t.address} symbol`).toBe(t.symbol.toUpperCase());
+        });
       });
     });
   }

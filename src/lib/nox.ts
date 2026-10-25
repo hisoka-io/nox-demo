@@ -17,6 +17,13 @@ export const KPS_BOOT_DEADLINE_MS = 15_000;
 /** Bound on one classic-mode attempt (HTTPS ingress plus a WebSocket for replies). */
 export const CLASSIC_TIMEOUT_MS = 30_000;
 
+/**
+ * Bound on the whole classic boot (seed topology, one batched registry check,
+ * WASM, WebSocket). It measures about 2 s, 4 s with a cold seed; past the bound
+ * the page shows the error with its Retry button instead of spinning.
+ */
+export const CLASSIC_CONNECT_DEADLINE_MS = 20_000;
+
 let instance: NoxClient | null = null;
 let connecting: Promise<NoxClient> | null = null;
 let transport: TransportInfo | null = null;
@@ -28,18 +35,17 @@ function describe(error: unknown): string {
 }
 
 /**
- * KPS boot bounded by `KPS_BOOT_DEADLINE_MS`. A client that connects after
- * the deadline is disconnected, since the caller has moved on to classic.
+ * Races `pending` against a deadline. A client that connects after the
+ * deadline is disconnected, since the caller has already moved on.
  */
-async function connectKps(): Promise<NoxClient> {
-  const pending = NoxClient.connect(kpsClientConfig());
+async function withDeadline(pending: Promise<NoxClient>, ms: number, what: string): Promise<NoxClient> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   const deadline = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       timedOut = true;
-      reject(new Error(`KPS boot did not finish within ${KPS_BOOT_DEADLINE_MS} ms`));
-    }, KPS_BOOT_DEADLINE_MS);
+      reject(new Error(`${what} did not finish within ${ms} ms`));
+    }, ms);
   });
   pending.then(
     (late) => {
@@ -54,13 +60,23 @@ async function connectKps(): Promise<NoxClient> {
   }
 }
 
+/** KPS boot bounded by `KPS_BOOT_DEADLINE_MS`; the caller falls back to classic past it. */
+function connectKps(): Promise<NoxClient> {
+  return withDeadline(NoxClient.connect(kpsClientConfig()), KPS_BOOT_DEADLINE_MS, "KPS boot");
+}
+
+/** Classic boot (HTTPS entry) bounded by `CLASSIC_CONNECT_DEADLINE_MS`. */
 function connectClassic(): Promise<NoxClient> {
-  return NoxClient.connect({
-    seeds: [NOX_SEED_URL],
-    ethRpcUrl: NOX_RPC_URL,
-    registryAddress: NOX_REGISTRY_ADDRESS,
-    timeoutMs: CLASSIC_TIMEOUT_MS,
-  });
+  return withDeadline(
+    NoxClient.connect({
+      seeds: [NOX_SEED_URL],
+      ethRpcUrl: NOX_RPC_URL,
+      registryAddress: NOX_REGISTRY_ADDRESS,
+      timeoutMs: CLASSIC_TIMEOUT_MS,
+    }),
+    CLASSIC_CONNECT_DEADLINE_MS,
+    "Classic (HTTPS entry) connect",
+  );
 }
 
 /**

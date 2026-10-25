@@ -5,11 +5,11 @@ Your queries route through 3 encrypted hops, so no RPC provider sees your IP.
 
 ## Features
 
-- Wallet portfolio with ETH and ERC-20 balances
-- Transaction lookup and contract reader (ABIs fetched from Blockscout through the mixnet)
+- Wallet portfolio: native balance, transactions sent, and the balances of each chain's main ERC-20 tokens (one Multicall3 read)
+- Transaction lookup on every listed chain, and a contract reader (verified ABIs fetched from Sourcify through the mixnet)
 - Broadcast pre-signed transactions through the mixnet
 - Live view of the network's entry, mix and exit nodes (packet paths in the animation are illustrative)
-- Multichain: Arbitrum Sepolia, Ethereum, Arbitrum, Base, Optimism. RPC mode reads Arbitrum Sepolia, the exit nodes' default chain; other chains use Explorer mode (Blockscout).
+- Multichain: Arbitrum Sepolia, Ethereum, Arbitrum, Base, Optimism. Every read is a JSON-RPC call made by the exit node: Arbitrum Sepolia through the exit's own provider, the other chains through the public RPC listed in `src/lib/chains.ts`.
 
 The exit node fetches the data; it never sees who asked. Fonts are bundled, and the page makes no direct requests to data providers. The Explorer dials a Nox entry node over KPS (WebRTC with a pinned certificate hash), trusting the registry snapshot pinned in the page (copied from `@hisoka-io/anon-rpc-worker`), and re-checks the registry through the mixnet. Browsers without WebRTC, or a superseded pinned node set, use the HTTPS entry instead, which checks the topology from the Nox seed (`api.hisoka.io`) against the registry over the public Arbitrum Sepolia RPC. The header shows the entry transport in use. The node count in the header comes from the seed's liveness list.
 
@@ -47,7 +47,7 @@ pnpm dev
 ```bash
 pnpm lint && pnpm build && pnpm test   # offline unit tests (what CI runs)
 pnpm test:live                         # mixnet suites against the live testnet (~4 min)
-pnpm preview & pnpm smoke              # headless browser smoke test of the built site
+pnpm preview & pnpm smoke              # headless browser smoke test of the built site (all tabs, plus an Ethereum balance and tx)
 pnpm smoke https://demo.nox.hisoka.io/ # same, against production
 pnpm smoke:anon-rpc [site-url]         # boot /anon-rpc from a cold browser and run the wallet calls
 ```
@@ -62,8 +62,8 @@ CI runs lint, build and unit tests, then the smoke test against a local build. `
 
 ```
 ┌─────────┐   ┌───────┐   ┌─────┐   ┌──────┐   ┌──────────────┐
-│ Browser │──▶│ Entry │──▶│ Mix │──▶│ Exit │──▶│ Blockscout / │
-└─────────┘   └───────┘   └─────┘   └──────┘   │     RPC      │
+│ Browser │──▶│ Entry │──▶│ Mix │──▶│ Exit │──▶│  RPC /       │
+└─────────┘   └───────┘   └─────┘   └──────┘   │  Sourcify    │
      ▲                                         └──────┬───────┘
      └──────────────── SURB return path ──────────────┘
 ```
