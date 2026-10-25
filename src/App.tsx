@@ -8,8 +8,8 @@ import { TxBroadcaster } from "@/components/tabs/TxBroadcaster";
 import { MixnetGraph } from "@/components/visualization/MixnetGraph";
 import { useNoxClient } from "@/hooks/useNoxClient";
 import { useTheme } from "@/hooks/useTheme";
-import { DEFAULT_CHAIN } from "@/lib/blockscout";
-import type { Chain } from "@/lib/blockscout";
+import { DEFAULT_CHAIN } from "@/lib/chains";
+import type { Chain } from "@/lib/chains";
 import type { Tab } from "@/types";
 import { TABS } from "@/types";
 

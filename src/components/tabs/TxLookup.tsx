@@ -7,9 +7,8 @@ import { ErrorDisplay } from "@/components/shared/ErrorDisplay";
 import { Examples } from "@/components/shared/Examples";
 import { RoutingAnimation } from "@/components/shared/RoutingAnimation";
 import { useRpcCall } from "@/hooks/useRpcCall";
-import { useHttpCall } from "@/hooks/useHttpCall";
-import { buildUrl, RESPONSE_BUDGET } from "@/lib/blockscout";
-import type { Chain } from "@/lib/blockscout";
+import { rpcOptions } from "@/lib/chains";
+import type { Chain } from "@/lib/chains";
 import { truncateAddress, formatEther } from "@/lib/format";
 import { ArrowRight, FileSearch } from "lucide-react";
 import { GOV_SAFE_CREATION_TX } from "@/lib/network";
@@ -36,7 +35,6 @@ interface TxResult {
 export function TxLookup({ chain }: { chain: Chain }) {
   const [result, setResult] = useState<TxResult | null>(null);
   const rpc = useRpcCall<Record<string, string> | null>();
-  const http = useHttpCall<Record<string, unknown>>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState<string | undefined>(undefined);
@@ -45,9 +43,10 @@ export function TxLookup({ chain }: { chain: Chain }) {
 
   const lookupViaRpc = useCallback(async (hash: string): Promise<TxResult> => {
     const start = Date.now();
+    const opts = rpcOptions(chain);
     const [tx, receipt] = await Promise.all([
-      rpc.execute("eth_getTransactionByHash", [hash]),
-      rpc.execute("eth_getTransactionReceipt", [hash]),
+      rpc.execute("eth_getTransactionByHash", [hash], opts),
+      rpc.execute("eth_getTransactionReceipt", [hash], opts),
     ]);
     if (!tx) throw new Error("Transaction not found");
 
@@ -67,32 +66,7 @@ export function TxLookup({ chain }: { chain: Chain }) {
       nonce: tx.nonce,
       latency: Date.now() - start,
     };
-  }, [rpc]);
-
-  const lookupViaApi = useCallback(async (hash: string): Promise<TxResult> => {
-    const start = Date.now();
-    const data = await http.execute(buildUrl(chain, `/transactions/${hash}`), RESPONSE_BUDGET.transaction);
-    if (!data || !data.hash) throw new Error("Transaction not found");
-
-    const from = (data.from as Record<string, unknown>)?.hash as string || "";
-    const to = (data.to as Record<string, unknown>)?.hash as string || null;
-    const fee = (data.fee as Record<string, unknown>)?.value as string || "0";
-    const status = data.status === "ok" ? "success" : data.status === null ? "pending" : "failed";
-
-    return {
-      hash,
-      from,
-      to,
-      value: String(data.value || "0"),
-      gasUsed: String(data.gas_used || "0"),
-      gasPrice: fee,
-      blockNumber: data.block ? String(data.block) : "pending",
-      status: status as TxResult["status"],
-      input: String(data.raw_input || "0x"),
-      nonce: String(data.nonce || "0"),
-      latency: Date.now() - start,
-    };
-  }, [http, chain]);
+  }, [rpc, chain]);
 
   const lookup = useCallback(async (hash: string) => {
     setLoading(true);
@@ -100,14 +74,13 @@ export function TxLookup({ chain }: { chain: Chain }) {
     setResult(null);
 
     try {
-      const txResult = isArbSepolia ? await lookupViaRpc(hash) : await lookupViaApi(hash);
-      setResult(txResult);
+      setResult(await lookupViaRpc(hash));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [isArbSepolia, lookupViaRpc, lookupViaApi]);
+  }, [lookupViaRpc]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,7 +88,7 @@ export function TxLookup({ chain }: { chain: Chain }) {
         <h2 className="font-serif text-3xl mb-2">Transaction Lookup</h2>
         <p className="text-sm text-fg-muted">
           Check any transaction on {chain.name} without revealing your interest.
-          {isArbSepolia ? " Routed via mixnet RPC." : " Routed via mixnet to Blockscout."}
+          {isArbSepolia ? " Routed via mixnet to the exit's RPC." : ` Routed via mixnet to ${new URL(chain.rpcUrl ?? "https://rpc").host}.`}
         </p>
       </div>
 

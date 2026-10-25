@@ -9,7 +9,8 @@ import { useRpcCall } from "@/hooks/useRpcCall";
 import { useHttpCall } from "@/hooks/useHttpCall";
 import { knownAbi, ERC20_ABI } from "@/lib/abi";
 import { DARKPOOL, NOX_REGISTRY, SOKA_TOKEN } from "@/lib/network";
-import { DEFAULT_CHAIN, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse } from "@/lib/blockscout";
+import { DEFAULT_CHAIN, MULTICALL3, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse } from "@/lib/chains";
+import { HttpStatusError } from "@/lib/http-response";
 import { FileCode2, Play } from "lucide-react";
 import { encodeFunctionData, decodeFunctionResult } from "viem";
 import type { Abi, AbiFunction } from "viem";
@@ -18,6 +19,8 @@ const EXAMPLE_CONTRACTS = [
   { label: "NoxRegistry", value: NOX_REGISTRY },
   { label: "DarkPool", value: DARKPOOL },
   { label: "SOKA", value: SOKA_TOKEN },
+  // Verified on Sourcify; its ABI is fetched through the mixnet.
+  { label: "Multicall3", value: MULTICALL3 },
 ];
 
 export function ContractReader() {
@@ -30,7 +33,7 @@ export function ContractReader() {
   const [abiLoading, setAbiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [latency, setLatency] = useState<number | null>(null);
-  const [abiSource, setAbiSource] = useState<"known" | "blockscout" | "erc20-fallback" | null>(null);
+  const [abiSource, setAbiSource] = useState<"known" | "sourcify" | "erc20-fallback" | null>(null);
   const [abiNote, setAbiNote] = useState<string | null>(null);
 
   const rpc = useRpcCall<string>();
@@ -71,15 +74,19 @@ export function ContractReader() {
       const fetched = parseAbiResponse(data);
       if (fetched) {
         setAbi(fetched as Abi);
-        setAbiSource("blockscout");
+        setAbiSource("sourcify");
       } else {
         setAbi(ERC20_ABI as unknown as Abi);
         setAbiSource("erc20-fallback");
-        setAbiNote("Contract not verified on Blockscout -- using ERC-20 ABI fallback");
+        setAbiNote("Sourcify returned no ABI for this contract -- using ERC-20 ABI fallback");
       }
     } catch (err) {
       setAbi(ERC20_ABI as unknown as Abi);
       setAbiSource("erc20-fallback");
+      if (err instanceof HttpStatusError && err.status === 404) {
+        setAbiNote("Contract not verified on Sourcify -- using ERC-20 ABI fallback");
+        return;
+      }
       setAbiNote(
         `ABI lookup failed (${err instanceof Error ? err.message : String(err)}) -- using ERC-20 ABI fallback`,
       );
@@ -132,7 +139,7 @@ export function ContractReader() {
         <div>
           <h2 className="font-serif text-2xl mb-1">Contract Reader</h2>
           <p className="text-[0.8rem] text-fg-muted">
-            Read any contract function. The call and the ABI lookup both go through the mixnet, so the RPC provider and Blockscout never see your IP.
+            Read any contract function. The call and the ABI lookup both go through the mixnet, so the RPC provider and Sourcify never see your IP.
           </p>
         </div>
         <span className="text-[0.65rem] text-fg-muted uppercase tracking-wider border border-fg-faint px-2 py-1 shrink-0">
@@ -151,7 +158,7 @@ export function ContractReader() {
       {contractAddress && abiLoading && (
         <div className="flex items-center gap-2 py-4">
           <span className="inline-block w-4 h-4 border-2 border-fg-muted border-t-transparent rounded-full animate-spin" />
-          <span className="text-[0.8rem] text-fg-muted">Fetching contract ABI from Blockscout via the mixnet...</span>
+          <span className="text-[0.8rem] text-fg-muted">Fetching contract ABI from Sourcify via the mixnet...</span>
         </div>
       )}
 
@@ -163,8 +170,8 @@ export function ContractReader() {
 
       {contractAddress && abi && viewFunctions.length > 0 && (
         <div className="flex flex-col gap-4">
-          {abiSource === "blockscout" && (
-            <p className="text-[0.65rem] text-fg-muted">ABI loaded from Blockscout (verified contract)</p>
+          {abiSource === "sourcify" && (
+            <p className="text-[0.65rem] text-fg-muted">ABI loaded from Sourcify (verified contract)</p>
           )}
           {abiSource === "erc20-fallback" && abiNote && (
             <p className="text-[0.65rem] text-fg-muted break-words">{abiNote}</p>
@@ -251,7 +258,7 @@ export function ContractReader() {
             Enter a contract address to read its public functions
           </p>
           <p className="text-fg-muted text-sm mt-2">
-            Known contracts: NoxRegistry, DarkPool, ERC-20
+            Built-in ABIs: NoxRegistry, DarkPool, ERC-20. Other verified contracts load their ABI from Sourcify.
           </p>
         </div>
       )}

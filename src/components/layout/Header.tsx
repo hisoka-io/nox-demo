@@ -4,8 +4,8 @@ import type { ConnectionStatus } from "@/hooks/useNoxClient";
 import type { TransportInfo } from "@/lib/nox";
 import { useTopology } from "@/hooks/useTopology";
 import { usePacketTracker } from "@/hooks/usePacketTracker";
-import { CHAINS } from "@/lib/blockscout";
-import type { Chain } from "@/lib/blockscout";
+import { CHAINS } from "@/lib/chains";
+import type { Chain } from "@/lib/chains";
 import { Sun, Moon, Globe } from "lucide-react";
 
 type Theme = "dark" | "light";

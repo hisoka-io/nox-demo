@@ -1,49 +1,87 @@
 import { describe, it, expect } from "vitest";
+import { decodeFunctionData, encodeAbiParameters, encodeFunctionResult, type Hex } from "viem";
 import {
-  CHAINS, DEFAULT_CHAIN, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse, parseTokenBalances, supportsRpcMode,
-} from "@/lib/blockscout";
+  CHAINS, DEFAULT_CHAIN, MULTICALL3, MULTICALL3_ABI, RESPONSE_BUDGET,
+  buildAbiUrl, parseAbiResponse, parseTokenBalances, rpcOptions, tokenBalancesCall,
+} from "@/lib/chains";
 import { knownAbi, NOX_REGISTRY_ABI } from "@/lib/abi";
 import { NOX_REGISTRY } from "@/lib/network";
 import { parseTopology } from "@/hooks/useTopology";
 
-describe("chain modes", () => {
-  it("only offers RPC mode on Arb Sepolia, the exit's default chain", () => {
-    expect(supportsRpcMode(DEFAULT_CHAIN)).toBe(true);
-    for (const chain of CHAINS.filter((c) => c.id !== "arbitrum-sepolia")) {
-      expect(supportsRpcMode(chain)).toBe(false);
+describe("chains", () => {
+  it("reads Arb Sepolia through the exit's own provider and every other chain through its listed RPC", () => {
+    expect(DEFAULT_CHAIN.id).toBe("arbitrum-sepolia");
+    expect(rpcOptions(DEFAULT_CHAIN)).toBeUndefined();
+    for (const chain of CHAINS.filter((c) => c !== DEFAULT_CHAIN)) {
+      expect(rpcOptions(chain)).toEqual({ rpcUrl: chain.rpcUrl });
+      expect(new URL(chain.rpcUrl!).protocol).toBe("https:");
+    }
+  });
+
+  it("has unique chain ids and unique token addresses per chain", () => {
+    expect(new Set(CHAINS.map((c) => c.chainId)).size).toBe(CHAINS.length);
+    for (const chain of CHAINS) {
+      const addrs = chain.tokens.map((t) => t.address.toLowerCase());
+      expect(new Set(addrs).size).toBe(addrs.length);
+      for (const a of addrs) expect(a).toMatch(/^0x[0-9a-f]{40}$/);
     }
   });
 });
 
-describe("response budgets", () => {
-  it("keeps the token list budget near the real ~27 KB page size", () => {
-    expect(RESPONSE_BUDGET.tokens).toBeGreaterThanOrEqual(40_000);
-    expect(RESPONSE_BUDGET.tokens).toBeLessThanOrEqual(60_000);
-  });
-});
+describe("token balances via Multicall3", () => {
+  const owner: Hex = "0x00000000000000000000000000000000000000aa";
+  const tokens = CHAINS[1].tokens.slice(0, 3);
 
-describe("token list parsing", () => {
-  it("does not keep third-party icon URLs", () => {
-    const [token] = parseTokenBalances({
-      items: [{ value: "1", token: { symbol: "X", name: "X", address: "0x1", decimals: "6", icon_url: "https://assets.example/x.png" } }],
+  it("batches one balanceOf(owner) per token into a single aggregate3 call", () => {
+    const [call, tag] = tokenBalancesCall(tokens, owner);
+    expect(tag).toBe("latest");
+    expect(call.to).toBe(MULTICALL3);
+    const { functionName, args } = decodeFunctionData({ abi: MULTICALL3_ABI, data: call.data });
+    expect(functionName).toBe("aggregate3");
+    const calls = args[0];
+    expect(calls.map((c) => c.target)).toEqual(tokens.map((t) => t.address));
+    for (const c of calls) {
+      expect(c.allowFailure).toBe(true);
+      expect(c.callData.startsWith("0x70a08231")).toBe(true);
+      expect(c.callData.toLowerCase().endsWith(owner.slice(2))).toBe(true);
+    }
+  });
+
+  it("decodes balances in token order and marks reverted calls", () => {
+    const word = (n: bigint) => encodeAbiParameters([{ type: "uint256" }], [n]);
+    const raw = encodeFunctionResult({
+      abi: MULTICALL3_ABI,
+      functionName: "aggregate3",
+      result: [
+        { success: true, returnData: word(5n) },
+        { success: false, returnData: "0x" },
+        { success: true, returnData: word(0n) },
+      ],
     });
-    expect(token.decimals).toBe(6);
-    expect(Object.values(token)).not.toContain("https://assets.example/x.png");
+    const out = parseTokenBalances(tokens, raw);
+    expect(out.map((t) => t.balance)).toEqual([5n, null, 0n]);
+    expect(out.map((t) => t.symbol)).toEqual(tokens.map((t) => t.symbol));
+  });
+
+  it("rejects a reply with the wrong number of results", () => {
+    const raw = encodeFunctionResult({ abi: MULTICALL3_ABI, functionName: "aggregate3", result: [] });
+    expect(() => parseTokenBalances(tokens, raw)).toThrow(/0 results for 3 tokens/);
   });
 });
 
 describe("ABI lookup", () => {
-  it("uses the ABI-only endpoint", () => {
+  it("uses Sourcify's v2 contract endpoint for the chain, asking for the ABI only", () => {
     expect(buildAbiUrl(DEFAULT_CHAIN, "0xabc")).toBe(
-      "https://arbitrum-sepolia.blockscout.com/api?module=contract&action=getabi&address=0xabc",
+      "https://sourcify.dev/server/v2/contract/421614/0xabc?fields=abi",
     );
+    expect(RESPONSE_BUDGET.abi).toBeGreaterThanOrEqual(30_000);
   });
 
-  it("parses verified and unverified replies", () => {
+  it("parses replies with and without an ABI", () => {
     const abi = [{ type: "function", name: "f", inputs: [], outputs: [], stateMutability: "view" }];
-    expect(parseAbiResponse({ status: "1", message: "OK", result: JSON.stringify(abi) })).toEqual(abi);
-    expect(parseAbiResponse({ status: "0", message: "Contract source code not verified", result: null })).toBeNull();
-    expect(parseAbiResponse({ status: "1", result: "not json" })).toBeNull();
+    expect(parseAbiResponse({ abi, matchId: "1" })).toEqual(abi);
+    expect(parseAbiResponse({ abi: [] })).toBeNull();
+    expect(parseAbiResponse({ customCode: "not_found" })).toBeNull();
     expect(parseAbiResponse(null)).toBeNull();
   });
 

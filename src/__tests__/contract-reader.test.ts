@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { getTestClient, LIVE } from "./setup";
 import { encodeFunctionData, decodeFunctionResult } from "viem";
 import { NOX_REGISTRY_ABI, DARKPOOL_ABI, ERC20_ABI } from "@/lib/abi";
-import { DEFAULT_CHAIN, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse } from "@/lib/blockscout";
-import { decodeHttpResponseJson } from "@/lib/http-response";
+import { DEFAULT_CHAIN, RESPONSE_BUDGET, buildAbiUrl, parseAbiResponse } from "@/lib/chains";
+import { HttpStatusError, decodeHttpResponseJson } from "@/lib/http-response";
 import type { Abi } from "viem";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
@@ -16,16 +16,27 @@ describe.skipIf(!LIVE)("Contract Reader via Mixnet", () => {
     client = await getTestClient();
   });
 
-  describe("ABI lookup through the mixnet", () => {
-    it("fetches a verified ABI from Blockscout within the ABI budget", async () => {
+  describe("ABI lookup through the mixnet (Sourcify)", () => {
+    const fetchAbi = async (address: string) => {
       const raw = await client.httpRequest(
-        "GET", buildAbiUrl(DEFAULT_CHAIN, NOX_REGISTRY),
+        "GET", buildAbiUrl(DEFAULT_CHAIN, address),
         [["Accept", "application/json"]],
         new Uint8Array(0),
         { expectedResponseBytes: RESPONSE_BUDGET.abi },
       );
-      const abi = parseAbiResponse(decodeHttpResponseJson<unknown>(raw));
+      return parseAbiResponse(decodeHttpResponseJson<unknown>(raw));
+    };
+
+    it("fetches the verified NoxRegistry ABI within the ABI budget", async () => {
+      const abi = await fetchAbi(NOX_REGISTRY);
       expect(Array.isArray(abi)).toBe(true);
+      expect(abi!.length).toBeGreaterThan(0);
+    });
+
+    it("answers 404 for an address with no verified contract", async () => {
+      await expect(fetchAbi("0x000000000000000000000000000000000000dEaD")).rejects.toSatisfy(
+        (err: unknown) => err instanceof HttpStatusError && err.status === 404,
+      );
     });
   });
 

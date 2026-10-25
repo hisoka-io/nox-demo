@@ -1,44 +1,32 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { getTestClient, LIVE } from "./setup";
-import { decodeHttpResponseJson } from "@/lib/http-response";
-import { CHAINS, RESPONSE_BUDGET, buildUrl, parseTransactions } from "@/lib/blockscout";
+import { CHAINS, rpcOptions } from "@/lib/chains";
 import { formatEther, hexToDecimal } from "@/lib/format";
-import { GOV_SAFE, GOV_SAFE_CREATION_TX } from "@/lib/network";
+import { GOV_SAFE_CREATION_TX } from "@/lib/network";
 import type { NoxClient } from "@hisoka-io/nox-client";
 
 const ARB_SEPOLIA_TX = GOV_SAFE_CREATION_TX;
-const VITALIK = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 
-describe.skipIf(!LIVE)("Transaction Lookup via Mixnet", () => {
+describe.skipIf(!LIVE)("Transaction lookup via the mixnet", () => {
   let client: NoxClient;
 
   beforeAll(async () => {
     client = await getTestClient();
   });
 
-  describe("RPC Mode (Arb Sepolia)", () => {
+  describe("Arb Sepolia (exit default provider)", () => {
     it("eth_getTransactionByHash returns transaction details", async () => {
       const tx = (await client.rpcCall("eth_getTransactionByHash", [ARB_SEPOLIA_TX])) as Record<string, string> | null;
 
       expect(tx).not.toBeNull();
       expect(tx!.hash.toLowerCase()).toBe(ARB_SEPOLIA_TX.toLowerCase());
-      expect(tx!.from).toBeDefined();
       expect(tx!.from.startsWith("0x")).toBe(true);
       expect(tx!.value).toBeDefined();
       expect(tx!.nonce).toBeDefined();
       expect(tx!.blockNumber).toBeDefined();
     });
 
-    it("eth_getTransactionReceipt returns receipt with status", async () => {
-      const receipt = (await client.rpcCall("eth_getTransactionReceipt", [ARB_SEPOLIA_TX])) as Record<string, string> | null;
-
-      expect(receipt).not.toBeNull();
-      expect(receipt!.transactionHash.toLowerCase()).toBe(ARB_SEPOLIA_TX.toLowerCase());
-      expect(["0x0", "0x1"]).toContain(receipt!.status);
-      expect(receipt!.gasUsed).toBeDefined();
-    });
-
-    it("parallel tx + receipt fetch works", async () => {
+    it("parallel tx + receipt fetch agree", async () => {
       const [tx, receipt] = await Promise.all([
         client.rpcCall("eth_getTransactionByHash", [ARB_SEPOLIA_TX]) as Promise<Record<string, string> | null>,
         client.rpcCall("eth_getTransactionReceipt", [ARB_SEPOLIA_TX]) as Promise<Record<string, string> | null>,
@@ -46,13 +34,11 @@ describe.skipIf(!LIVE)("Transaction Lookup via Mixnet", () => {
 
       expect(tx).not.toBeNull();
       expect(receipt).not.toBeNull();
+      expect(receipt!.transactionHash.toLowerCase()).toBe(ARB_SEPOLIA_TX.toLowerCase());
+      expect(["0x0", "0x1"]).toContain(receipt!.status);
       expect(tx!.blockNumber).toBe(receipt!.blockNumber);
-
-      const formatted = formatEther(BigInt(tx!.value));
-      expect(parseFloat(formatted)).toBeGreaterThanOrEqual(0);
-
-      const gasUsed = hexToDecimal(receipt!.gasUsed);
-      expect(parseInt(gasUsed)).toBeGreaterThan(0);
+      expect(parseFloat(formatEther(BigInt(tx!.value)))).toBeGreaterThanOrEqual(0);
+      expect(parseInt(hexToDecimal(receipt!.gasUsed))).toBeGreaterThan(0);
     });
 
     it("returns null for a non-existent hash", async () => {
@@ -62,43 +48,30 @@ describe.skipIf(!LIVE)("Transaction Lookup via Mixnet", () => {
     });
   });
 
-  for (const chain of CHAINS) {
-    const addr = chain.id === "arbitrum-sepolia" ? GOV_SAFE : VITALIK;
+  for (const chain of CHAINS.filter((c) => c.rpcUrl)) {
+    describe(`${chain.name} (${chain.id}, ${new URL(chain.rpcUrl!).host})`, () => {
+      for (const [label, pick] of [
+        ["a recent block", (latest: bigint) => latest],
+        ["a block halfway back in the chain's history", (latest: bigint) => latest / 2n],
+      ] as const) {
+        it(`looks up a transaction from ${label}, with its receipt`, async () => {
+          const latest = BigInt((await client.rpcCall("eth_blockNumber", [], rpcOptions(chain))) as string);
+          const number = `0x${pick(latest - 2n).toString(16)}`;
+          const block = (await client.rpcCall("eth_getBlockByNumber", [number, false], rpcOptions(chain))) as
+            { number: string; transactions: string[] } | null;
+          expect(block).not.toBeNull();
+          expect(block!.transactions.length).toBeGreaterThan(0);
+          const hash = block!.transactions[0];
 
-    describe(`Explorer API - ${chain.name} (${chain.id})`, () => {
-      it("fetches address transactions then looks up a single tx", async () => {
-        const listUrl = buildUrl(chain, `/addresses/${addr}/transactions`);
-        const listRaw = await client.httpRequest(
-          "GET", listUrl,
-          [["Accept", "application/json"]],
-          new Uint8Array(0),
-          { expectedResponseBytes: RESPONSE_BUDGET.transactions },
-        );
-
-        const listData = decodeHttpResponseJson<Record<string, unknown>>(listRaw);
-        const txs = parseTransactions(listData);
-        expect(txs.length).toBeGreaterThan(0);
-
-        const txHash = txs[0].hash;
-        expect(txHash.startsWith("0x")).toBe(true);
-
-        const txUrl = buildUrl(chain, `/transactions/${txHash}`);
-        const txRaw = await client.httpRequest(
-          "GET", txUrl,
-          [["Accept", "application/json"]],
-          new Uint8Array(0),
-          { expectedResponseBytes: RESPONSE_BUDGET.transaction },
-        );
-
-        const txData = decodeHttpResponseJson<Record<string, unknown>>(txRaw);
-        expect(String(txData.hash).toLowerCase()).toBe(txHash.toLowerCase());
-        expect(txData.status).toBeDefined();
-
-        const from = txData.from as Record<string, unknown> | undefined;
-        if (from) {
-          expect(String(from.hash).startsWith("0x")).toBe(true);
-        }
-      });
+          const [tx, receipt] = await Promise.all([
+            client.rpcCall("eth_getTransactionByHash", [hash], rpcOptions(chain)) as Promise<Record<string, string> | null>,
+            client.rpcCall("eth_getTransactionReceipt", [hash], rpcOptions(chain)) as Promise<Record<string, string> | null>,
+          ]);
+          expect(tx!.hash.toLowerCase()).toBe(hash.toLowerCase());
+          expect(tx!.blockNumber).toBe(block!.number);
+          expect(["0x0", "0x1"]).toContain(receipt!.status);
+        });
+      }
     });
   }
 });
