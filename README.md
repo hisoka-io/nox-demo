@@ -22,7 +22,7 @@ The exit node fetches the data; it never sees who asked. Fonts are bundled, and 
 3. runs the bundle in the harness's null-origin sandbox; the worker dials a Nox entry node over KPS (WebRTC with a pinned certificate hash);
 4. sends wallet calls (`eth_chainId`, `eth_blockNumber`, `eth_getBalance`, an ERC-20 `balanceOf`, a JSON-RPC batch) through `worker.fetch`, each next to the same call made directly, with timings and the transport the call used.
 
-With worker 0.4.0 the calls use end-to-end TLS: the worker runs TLS itself and the exit relays encrypted records, so the request is readable by the RPC provider alone. The page shows the worker's TLS setting (from its `boot.tls` log) and, per call, `end-to-end TLS` or `exit HTTP request`.
+Since worker 0.4.0 the calls use end-to-end TLS: the worker runs TLS itself and the exit relays encrypted records, so the request is readable by the RPC provider alone. The page shows the worker's TLS setting (from its `boot.tls` log) and, per call, `end-to-end TLS` or `exit HTTP request`.
 
 The page shows a live boot timeline, the active entry (KPS address and certhash), the bundle hash and specifier with explorer links, the worker's log, and the worker's structured error codes. A developer option boots a local bundle file under the same keccak check. The per-call trace option boots the worker with `logLevel: "debug"` and shows, for each call, whether it used a spare TLS session, opened one inline or retried, with the time spent opening, exchanging and in the page, plus p50/p95 over the calls run.
 
@@ -30,7 +30,7 @@ Configuration (query string first, then build-time variables):
 
 | Query | Build variable | Meaning |
 | --- | --- | --- |
-| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the stable Nox specifier [`0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A`](https://sepolia.etherscan.io/address/0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A), which follows the current worker release, 0.4.0 today: its owner repoints it at each release; the immutable per-release pins boot with `?specifier=`: worker 0.4.0 `0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d`, worker 0.3.0 `0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB`, worker 0.2.0 `0x29b4a6A8Cc11769531854d87f9F33EC63Efe8fe6`) |
+| `specifier` | `VITE_ANON_RPC_SPECIFIER` | specifier contract address (default on Ethereum Sepolia: the stable Nox specifier [`0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A`](https://sepolia.etherscan.io/address/0x35133267A8F7EC35046a83DCA0f4Ca8A6e1b7A9A), which follows the current worker release, 0.4.1 today: its owner repoints it at each release; the immutable per-release pins boot with `?specifier=`: worker 0.4.1 `0x0597fA1f70eD00799f41e0C9BC9dEFE92C92850F`, worker 0.4.0 `0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d`, worker 0.3.0 `0x29B51ca9Ad80E9c0B0D111C8748E6a7908b82eDB`, worker 0.2.0 `0x29b4a6A8Cc11769531854d87f9F33EC63Efe8fe6`) |
 | `chain` | `VITE_ANON_RPC_CHAIN_ID` | chain id of the specifier (default 11155111) |
 | `rpc` | `VITE_ANON_RPC_SPECIFIER_RPC` | RPC for the specifier read (default: the chain's public RPC) |
 | `target` | `VITE_ANON_RPC_TARGET` | chain for the wallet calls: `arbitrum-sepolia`, `ethereum`, `ethereum-sepolia` |
