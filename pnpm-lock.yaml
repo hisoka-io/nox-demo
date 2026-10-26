@@ -21,11 +21,11 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       '@hisoka-io/nox-client':
-        specifier: 0.8.0
-        version: 0.8.0
+        specifier: 0.9.0
+        version: 0.9.0
       '@hisoka-io/nox-wasm':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.3.0
+        version: 0.3.0
       '@kpstreams/webrtc-client':
         specifier: 0.2.1
         version: 0.2.1
@@ -231,12 +231,12 @@ packages:
   '@fontsource/jetbrains-mono@5.3.0':
     resolution: {integrity: sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==}
 
-  '@hisoka-io/nox-client@0.8.0':
-    resolution: {integrity: sha512-1EpOKsVm2LzbApT0KQqErPSCZ5cyF0fqHrPqbWaHfvD4EcNuaHlAOog36WYzIqxY7uTO8tXqK3NMQf5EbMmSBw==}
+  '@hisoka-io/nox-client@0.9.0':
+    resolution: {integrity: sha512-vaTUyuvBOK5V9PZLg+09JVbFCbTkQYKdl2zDIp3lCJlMu5Foc3NzCKWFWwAb/cXoaY2APDVYneZxgPOWerN0bw==}
     engines: {node: '>=20'}
 
-  '@hisoka-io/nox-wasm@0.2.0':
-    resolution: {integrity: sha512-HBJHsiPxyNtCxIyVEEa7421wHhRYYTTLQUB9dzezjE66P+y3AmA4rl1aZgoonpq7Nhyk3l22q+sblpmrcK8V5Q==}
+  '@hisoka-io/nox-wasm@0.3.0':
+    resolution: {integrity: sha512-kvXONL0tzipPzRsVCIX9qqK1TEpuVJLg6w6Wh+bXk4f9ftpfD5ETSYokaZTxsqH2BKJ0TYb1quIP2Y5f8S2AVQ==}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -1708,15 +1708,15 @@ snapshots:
 
   '@fontsource/jetbrains-mono@5.3.0': {}
 
-  '@hisoka-io/nox-client@0.8.0':
+  '@hisoka-io/nox-client@0.9.0':
     dependencies:
-      '@hisoka-io/nox-wasm': 0.2.0
+      '@hisoka-io/nox-wasm': 0.3.0
       ethers: 6.16.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@hisoka-io/nox-wasm@0.2.0': {}
+  '@hisoka-io/nox-wasm@0.3.0': {}
 
   '@humanfs/core@0.19.1': {}
 

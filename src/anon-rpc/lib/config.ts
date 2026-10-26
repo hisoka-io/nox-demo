@@ -154,10 +154,11 @@ export const FALLBACK_SPECIFIER_CHAIN_ID = 11155111;
 
 /**
  * The Nox worker specifier on Ethereum Sepolia: one stable address that
- * follows the current release (today @hisoka-io/anon-rpc-worker 0.4.0). It is
+ * follows the current release (today @hisoka-io/anon-rpc-worker 0.4.1). It is
  * the reference WorkerSpecifier of ethereum/anon-rpc, which its owner
  * repoints at each worker release with setWorker. Each release also has an
- * immutable per-release pin, usable with ?specifier= (0.4.0:
+ * immutable per-release pin, usable with ?specifier= (0.4.1:
+ * 0x0597fA1f70eD00799f41e0C9BC9dEFE92C92850F; 0.4.0:
  * 0xDf5Db854BA75B52a4bF1a250a93D8d25cB982b2d).
  */
 export const RELEASED_SPECIFIER = {
