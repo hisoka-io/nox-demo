@@ -47,5 +47,11 @@
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
     "vitest": "^4.1.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "ws@>=8.0.0 <8.21.0": "8.22.0",
+      "zod@<4.6.6": "4.6.7"
+    }
   }
 }
