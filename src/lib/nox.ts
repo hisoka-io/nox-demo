@@ -1,5 +1,6 @@
 import { NoxClient } from "@hisoka-io/nox-client";
 import { kpsClientConfig, kpsSupported } from "@/lib/kps";
+import { missingCapability, PlatformError } from "@/lib/platform";
 import { NOX_REGISTRY_ADDRESS, NOX_RPC_URL, NOX_SEED_URL } from "@/lib/network";
 
 /** How the Explorer reaches its mixnet entry. */
@@ -85,6 +86,8 @@ function connectClassic(): Promise<NoxClient> {
  * for example with `TOPOLOGY_STALE` once the pinned node set is superseded.
  */
 async function connect(): Promise<NoxClient> {
+  const missing = missingCapability();
+  if (missing?.code === "wasm-disabled") throw new PlatformError(missing);
   let reason: string;
   if (kpsSupported()) {
     try {
