@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +33,7 @@ jobs:
 
   smoke:
     # Serves this build locally and drives it in headless Chromium against the live testnet.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: ci
     timeout-minutes: 15
     steps:
