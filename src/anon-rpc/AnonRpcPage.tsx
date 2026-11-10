@@ -5,6 +5,7 @@ import { Footer } from "@/components/layout/Footer";
 import { resolveDefaults } from "./lib/config";
 import { configEntries } from "./lib/entries";
 import { hintForFailedCode } from "./lib/errors";
+import { dialIssue, missingCapability } from "@/lib/platform";
 import { useAnonRpcWorker, type Phase } from "./useAnonRpcWorker";
 import { BootForm } from "./components/BootForm";
 import { Timeline } from "./components/Timeline";
@@ -28,6 +29,9 @@ export default function AnonRpcPage() {
   const [config, setConfig] = useState<unknown>(undefined);
   const extraEntries = useMemo(() => configEntries(config), [config]);
   const badge = PHASE_BADGE[phase];
+  const capabilityIssue = useMemo(() => missingCapability(), []);
+  const platformNotice =
+    capabilityIssue ?? (phase === "booting" || phase === "failed" ? dialIssue(boot.steps.dial.status === "done", boot.retries) : null);
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
@@ -78,6 +82,18 @@ export default function AnonRpcPage() {
             .
           </p>
         </section>
+
+        {platformNotice && (
+          <div className="border border-error/30 bg-error/5 p-4 text-sm" role="alert" data-testid="platform-error">
+            <p className="text-fg">
+              <Badge tone="error" testId="platform-error-code">
+                {platformNotice.code}
+              </Badge>{" "}
+              <span className="text-fg-secondary">{platformNotice.title}</span>
+            </p>
+            <p className="mt-1 text-xs text-fg-muted">{platformNotice.hint}</p>
+          </div>
+        )}
 
         {phase === "failed" && boot.failure && (
           <div className="border border-error/30 bg-error/5 p-4 text-sm" role="alert" data-testid="boot-error">
