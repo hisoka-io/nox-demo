@@ -74,6 +74,7 @@ function connectClassic(): Promise<NoxClient> {
       ethRpcUrl: NOX_RPC_URL,
       registryAddress: NOX_REGISTRY_ADDRESS,
       timeoutMs: CLASSIC_TIMEOUT_MS,
+      surbFormat: "v2",
     }),
     CLASSIC_CONNECT_DEADLINE_MS,
     "Classic (HTTPS entry) connect",
