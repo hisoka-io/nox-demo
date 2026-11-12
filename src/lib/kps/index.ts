@@ -57,6 +57,7 @@ export function kpsClientConfig(): NoxClientConfig {
   return {
     mode: "kps",
     wasm: loadWasm,
+    surbFormat: "v2",
     timeoutMs: KPS_ATTEMPT_TIMEOUT_MS,
     resend: { ...RESEND_FAST, hedgeAfterMs: KPS_HEDGE_AFTER_MS },
     kps: {
